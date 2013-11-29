@@ -19,12 +19,14 @@
 #include "graphgen.cuh"
 #include "graph.cuh"
 #include "cuda_util.cuh"
+#include "bfs.cu"
 
 int main(int argc, char **argv) {
 	
 	typedef int VertexId;
 	typedef int SizeT;
 	typedef int Value;
+
 	graph<VertexId, SizeT, Value> ga;
 
 	if (argc < 2) {
@@ -39,10 +41,13 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
-	myGraphGen(fp, ga);
+	myGraphGen<VertexId, SizeT, Value>(fp, ga);
 
-	ga.printInfo(false);
+	ga.printInfo(true);
 	ga.printOutDegrees();
+
+	// traverse it
+	BFSGraph<VertexId, SizeT, Value>(ga, (VertexId) 0);
 
 
 	fclose(fp);

@@ -16,7 +16,8 @@
  */
 
 
-
+#include <sys/time.h>
+#include <sys/resource.h>
 #include <stdio.h>
 #include <math.h>
 #include <float.h>
@@ -27,6 +28,59 @@
 #include <sstream>
 #include <iostream>
 
+
+/******************************************************************************
+ * Auxiliary list
+ ******************************************************************************/
+template<typename Value, typename SizeT>
+struct list
+{
+	SizeT   n;
+	Value   *elements;
+	Value   *d_elements;
+
+	list() : n(0), elements(NULL), d_elements(NULL) {}
+
+	list(SizeT _n) { init(_n); }
+
+	void init(SizeT _n) {
+		n = _n;
+
+		// mapped & pinned
+		int flags = cudaHostAllocMapped;
+        if (HandleError(cudaHostAlloc((void **)&elements, sizeof(Value) * _n, flags),
+                        "list: cudaHostAlloc(elements) failed", __FILE__, __LINE__)) 
+        	exit(1);
+        if (HandleError(cudaHostGetDevicePointer((void **) &d_elements, (void *) elements, 0),
+                        "list: cudaHostGetDevicePointer(d_elements) failed", __FILE__, __LINE__))
+            exit(1);
+	}
+
+	void del() {
+		HandleError(cudaFreeHost(elements), "list: cudaFreeHost(elements) failed",
+                    __FILE__, __LINE__);
+		elements = NULL;
+		d_elements = NULL;
+		n = 0;
+	}
+
+	// setting to some value on CPU serially
+	void all_to(Value x) {
+		for (int i=0; i<n; i++) {
+			elements[i] = x;
+		}
+	}
+
+	void print() {
+		for (int i=0; i<n; i++) {
+			printf("%lld ", (long long)elements[i]);
+		}
+		printf("\n");
+	}
+
+	void set(SizeT i, Value x) { elements[i] = x; }
+
+};
 
 
 /******************************************************************************
@@ -352,15 +406,6 @@ int CompareDeviceResults(
 	return retval;
 }
 
-int CompareDeviceResults(
-	util::NullType *h_reference,
-	util::NullType *d_data,
-	size_t num_elements,
-	bool verbose = true,
-	bool display_data = false)
-{
-	return 0;
-}
 
 /**
  * Verify the contents of a device array match those

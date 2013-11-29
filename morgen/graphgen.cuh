@@ -46,8 +46,8 @@ void tinyGraphGen(graph<VertexId, SizeT, Value> &g)
  * Generate a graph from a user-defined format file
  * it take a pointer to the opened file
  */
- template<typename VertexId, typename SizeT, typename Value> 
- void myGraphGen(FILE *fp, graph<VertexId, SizeT, Value> &g)
+template<typename VertexId, typename SizeT, typename Value> 
+void myGraphGen(FILE *fp, graph<VertexId, SizeT, Value> &g)
 {
 	// read the number of nodes
 	SizeT  nodes; 

@@ -21,6 +21,91 @@
 #include <stdlib.h>
 #include <math.h>
 
+#include "cuda_util.cuh"
+
+
+
+
+/**************************************************************************
+ * Partitial set of vertices by recording their ID in a queue(static)
+ **************************************************************************/
+template<typename VertexId, typename SizeT>
+struct subvertices {
+
+    SizeT     max;
+
+    VertexId  *vertices;
+    SizeT     *sizep;      //logically size __which is allocated on pinned mem__
+
+    VertexId  *d_vertices;
+    SizeT     *d_sizep;
+
+    subvertices() : max(0), sizep(NULL), vertices(NULL), d_sizep(NULL), d_vertices(NULL) {} 
+
+    subvertices(SizeT nodes) { init(nodes); }
+
+    /**
+     * The size of subvertices should be as many as the total number of vertices
+     * in the graph
+     */
+    void init(SizeT nodes) {
+        max = nodes;
+    
+        // Pinned and mapped in memory
+        int flags = cudaHostAllocMapped;
+        if (HandleError(cudaHostAlloc((void **)&vertices, sizeof(SizeT) * nodes, flags),
+                        "subvertices: cudaHostAlloc(vertices) failed", __FILE__, __LINE__)) 
+            exit(1);
+        if (HandleError(cudaHostAlloc((void **)&sizep, sizeof(SizeT) * 1, flags),
+                        "subvertices: cudaHostAlloc(sizep) failed", __FILE__, __LINE__)) 
+            exit(1);
+
+        *sizep = 0;
+
+        // Get the device pointer
+        if (HandleError(cudaHostGetDevicePointer((void **) &d_vertices, (void *) vertices, 0),
+                        "subvertices: cudaHostGetDevicePointer(d_vertices) failed", __FILE__, __LINE__))
+            exit(1);
+        if (HandleError(cudaHostGetDevicePointer((void **) &d_sizep, (void *) sizep, 0),
+                        "subvertices: cudaHostGetDevicePointer(d_sizep) failed", __FILE__, __LINE__))
+            exit(1);
+
+    }
+
+    /**
+     * Append a sinfle vertex(element) into the subset
+     */
+    int append(VertexId v) {
+        if (*sizep >= max)    // has been full
+            return -1;
+        else {
+            vertices[*sizep] = v; 
+            ++(*sizep);
+            return 0;
+        }
+    }
+
+    void print() {
+        for (int i=0; i<*sizep; i++) {
+            printf("%lld ", (long long)vertices[i]);
+        }
+        printf("\n");
+    }
+
+    void del() {
+        HandleError(cudaFreeHost(vertices), "subvertices: cudaFreeHost(vertices) failed",
+                    __FILE__, __LINE__);
+        HandleError(cudaFreeHost(sizep), "subvertices: cudaFreeHost(sizep) failed",
+                    __FILE__, __LINE__);
+        max = 0;
+        sizep = NULL;
+        d_sizep = NULL;
+        vertices = NULL;
+        d_vertices = NULL;
+    }
+
+ };
+
 
 /**************************************************************************
  * The graph is represented as CSR format and resides in the pinned memory
@@ -30,14 +115,28 @@ struct graph {
 
     SizeT     n;
     SizeT     m;
+
+    /**
+     * Host pointers
+     */
     SizeT     *row_offsets;
-    VertexId  *column_indices;   // SOA instead of AOS
+    VertexId  *column_indices;   // SOA instead of AOS 
     Value     *costs;
 
     /**
-     * Default constructor
+     * Device pointers
      */
-    graph() : n(0), m(0), row_offsets(NULL), column_indices(NULL), costs(NULL) {}
+    SizeT     *d_row_offsets;
+    VertexId  *d_column_indices;
+    Value     *d_costs;
+
+
+    /**
+     * Default constructor(do not allocate memory since the n/m is unknown)
+     */
+    graph() : n(0), m(0), row_offsets(NULL), column_indices(NULL), costs(NULL),
+              d_row_offsets(NULL), d_column_indices(NULL), d_costs(NULL) {}
+
 
 
     void init(SizeT nodes, SizeT edges) {
@@ -52,9 +151,18 @@ struct graph {
         n = nodes;
 
         // Allocated in the pinned memory
+        // NOTE: the graph is mapped to device memory as well, the pointer
+        // of which can be obtained by calling cudaHostGetDevicePointer()
+
         int flags = cudaHostAllocMapped;
-        if (HandleError(cudaHostAlloc((void **)&row_offsets, sizeof(SizeT) * (n + 1), flags),
-                        "graph: cudaHostAlloc(row_offsets) failed", __FILE__, __LINE__)) exit(1);
+        if (HandleError(cudaHostAlloc((void **) &row_offsets, sizeof(SizeT) * (n + 1), flags),
+                        "graph: cudaHostAlloc(row_offsets) failed", __FILE__, __LINE__)) 
+            exit(1);
+
+        // Get the device pointer
+        if (HandleError(cudaHostGetDevicePointer((void **) &d_row_offsets, (void *) row_offsets, 0),
+                        "graph: cudaHostGetDevicePointer(d_row_offsets) failed", __FILE__, __LINE__)) 
+            exit(1);
     }
 
     /**
@@ -65,11 +173,23 @@ struct graph {
         
         // Allocated in the pinned memory
         int flags = cudaHostAllocMapped;
-        if (HandleError(cudaHostAlloc((void **)&column_indices, sizeof(VertexId) * m, flags),
-                        "graph: cudaHostAlloc(column_indices) failed", __FILE__, __LINE__)) exit(1);
-        if (HandleError(cudaHostAlloc((void **)&costs, sizeof(Value) * m, flags),
-                        "graph: cudaHostAlloc(costs) failed", __FILE__, __LINE__)) exit(1);
+        if (HandleError(cudaHostAlloc((void **) &column_indices, sizeof(VertexId) * m, flags),
+                        "graph: cudaHostAlloc(column_indices) failed", __FILE__, __LINE__)) 
+            exit(1);
+        if (HandleError(cudaHostAlloc((void **) &costs, sizeof(Value) * m, flags),
+                        "graph: cudaHostAlloc(costs) failed", __FILE__, __LINE__)) 
+            exit(1);
+        
+        // Get the device pointer
+        if (HandleError(cudaHostGetDevicePointer((void **) &d_column_indices, (void *) column_indices, 0),
+                        "graph: cudaHostGetDevicePointer(d_column_indices) failed", __FILE__, __LINE__)) 
+            exit(1);
+                   
+        if (HandleError(cudaHostGetDevicePointer((void **) &d_costs, (void *) costs, 0),
+                        "graph: cudaHostGetDevicePointer(d_costs) failed", __FILE__, __LINE__)) 
+            exit(1);
     }
+
 
     /**
      * Delete the graph 
@@ -82,12 +202,15 @@ struct graph {
                      __FILE__, __LINE__);
         HandleError(cudaFreeHost(costs), "graph: cudaFreeHost(costs) failed",
                      __FILE__, __LINE__);
-
-        row_offsets = NULL;
-        column_indices = NULL;
-        costs = NULL;
+        
         n = 0;
         m = 0;
+        row_offsets      = NULL;
+        column_indices   = NULL;
+        costs            = NULL;
+        d_row_offsets    = NULL;
+        d_column_indices = NULL;
+        d_costs          = NULL;
       }
 
 
@@ -95,7 +218,7 @@ struct graph {
      * Display the infomation of the graph at the console
      */    
     void printInfo(bool verbose = false) {
-        printf("%lld vertices, %lld edges\n", (long long) n, (long long) m);
+        fprintf(stdout, "%lld vertices, %lld edges\n", (long long) n, (long long) m);
 
         if (!verbose) return;
 
@@ -138,12 +261,12 @@ struct graph {
         
         for (int i = -1; i < max_times+1; i++) {
             int y = pow(2, i);
-            printf("Degree %d: %d (%.2f%%)\n",
-                   y,
-                   log_counts[i+1],
+            printf("Degree %d: %d (%.2f%%)\n", y, log_counts[i+1],
                    (float) log_counts[i+1] * 100.0 / n);
         }
 
     }
 };
+
+
 
