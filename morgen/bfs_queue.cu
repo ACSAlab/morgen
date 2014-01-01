@@ -17,6 +17,7 @@
  */
 
 
+#pragma once
 
 #include "cuda_util.cuh"
 #include "util.cuh"
@@ -93,6 +94,7 @@ void BFSGraph_gpu_queue(graph<VertexId, SizeT, Value> &g, VertexId source)
 
 	// traverse from source node
     workset1.append(source);   
+    levels.set(source, 0);
     visited.set(source, 1);
     SizeT worksetSize = 1;
     SizeT lastWorksetSize = 0;
@@ -165,7 +167,7 @@ void BFSGraph_gpu_queue(graph<VertexId, SizeT, Value> &g, VertexId source)
     printf("gpu queued bfs terminates\n");	
 
 
-    //levels.print();
+    levels.print_log();
 
     levels.del();
     visited.del();

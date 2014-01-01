@@ -20,20 +20,34 @@
 #include "graph.cuh"
 #include "cuda_util.cuh"
 #include "bfs_queue.cu"
-#include "serial_bfs.cpp"
+#include "bfs_serial.cpp"
+#include "bfs_bitmask.cu"
+
+void usage() {
+	printf("\ntest <graph type> <graph type args> [--device=<device index>] "
+			"[--v] [--instrumented] [--i=<num-iterations>] [--undirected]"
+			"[--src=< <source idx> | randomize >]\n"
+			"\n"
+			"\n");
+}
+
+
 
 int main(int argc, char **argv) {
 	
+	CommandLineArgs args(argc, argv);
+
+	if ((argc < 3) || args.CheckCmdLineFlag("help")) {
+		usage();
+		return 1;
+	}
+
+
 	typedef int VertexId;
 	typedef int SizeT;
 	typedef int Value;
 
 	graph<VertexId, SizeT, Value> ga;
-
-	if (argc < 2) {
-		fprintf(stderr, "at least 2 arguments\n");
-		exit(1);
-	}
 
 	FILE *fp = fopen(argv[1], "r");
 
@@ -47,10 +61,26 @@ int main(int argc, char **argv) {
 	ga.printInfo(false);
 	ga.printOutDegrees();
 
-	// traverse it
-	BFSGraph_gpu_queue<VertexId, SizeT, Value>(ga, (VertexId) 0);
 
-	BFSGraph_serial<VertexId, SizeT, Value>(ga, (VertexId) 0);
+	std::string bfs_type = argv[2];
+
+
+	// traverse it
+	if (bfs_type == "serial") {
+
+		BFSGraph_serial<VertexId, SizeT, Value>(ga, (VertexId) 0);
+
+	} else if (bfs_type == "bitmask") {
+
+		BFSGraph_gpu_bitmask<VertexId, SizeT, Value>(ga, (VertexId) 0);
+
+	} else if (bfs_type == "queue") {
+
+		BFSGraph_gpu_queue<VertexId, SizeT, Value>(ga, (VertexId) 0);
+
+	} else {
+		fprintf(stderr, "no traverse type is specified\n");
+	}
 
 
 	fclose(fp);

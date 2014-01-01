@@ -180,7 +180,7 @@ struct graph {
         
         for (int i = -1; i < max_times+1; i++) {
             int y = pow(2, i);
-            printf("Degree %d: %d (%.2f%%)\n", y, log_counts[i+1],
+            printf("Degree %d:\t%d\t%.2f%%\n", y, log_counts[i+1],
                    (float) log_counts[i+1] * 100.0 / n);
         }
 

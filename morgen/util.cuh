@@ -32,17 +32,61 @@
 #include <iostream>
 
 
+
+
+/**************************************************************************
+ * Single variable on GPU
+ **************************************************************************/
+template<typename Value>
+struct var {
+
+    Value  *elem;
+    Value  *d_elem;      
+
+    var() { 
+        // Pinned and mapped in memory
+        int flags = cudaHostAllocMapped;
+
+        if (HandleError(cudaHostAlloc((void **)&elem, sizeof(Value) * 1, flags),
+                        "var: cudaHostAlloc(elem) failed", __FILE__, __LINE__)) 
+            exit(1);
+
+        // Get the device pointer
+        if (HandleError(cudaHostGetDevicePointer((void **) &d_elem, (void *) elem, 0),
+                        "var: cudaHostGetDevicePointer(d_elem) failed", __FILE__, __LINE__))
+            exit(1);
+    }
+
+    Value getVal() {
+    	return *elem;
+    }
+
+    void set(Value v) {
+    	*elem = v;
+    }
+
+    void del() {
+        HandleError(cudaFreeHost(elem), "var: cudaFreeHost(elem) failed",
+                    __FILE__, __LINE__);
+        elem = NULL;
+        d_elem = NULL;
+    }
+
+ };
+
+
+
 /**************************************************************************
  * Static queue
  **************************************************************************/
-template<typename VertexId, typename SizeT>
+template<typename Value, typename SizeT>
 struct queued {
 
     SizeT     n;         //maximal allocated size
-    VertexId  *elems;
+    Value  *elems;
     SizeT     *sizep;      //the logical size will be changed on gpu 
 
-    VertexId  *d_elems;
+    Value  *d_elems;
     SizeT     *d_sizep;
 
     queued() : n(0), sizep(NULL), elems(NULL), d_sizep(NULL), d_elems(NULL) {} 
@@ -77,7 +121,7 @@ struct queued {
     /**
      * A.K.A. enqueue
      */
-    int append(VertexId v) {
+    int append(Value v) {
         if (*sizep >= n)    // has been full
             return -1;
         else {
@@ -95,7 +139,7 @@ struct queued {
 
     void print() {
         for (int i = 0; i < *sizep; i++) {
-            printf("%lld ", (long long)elems[i]);
+            printf("%lld\n", (long long)elems[i]);
         }
         printf("\n");
     }
@@ -158,11 +202,12 @@ struct list
 		}
 	}
 
-	void print() {
+	void print_log() {
+		FILE* log = fopen("log.txt", "w");
 		for (int i = 0; i < n; i++) {
-			printf("%lld ", (long long)elems[i]);
+			fprintf(log, "%lld\n", (long long)elems[i]);
 		}
-		printf("\n");
+		fprintf(log, "\n");
 	}
 
 	void set(SizeT i, Value x) { elems[i] = x; }
@@ -337,235 +382,6 @@ void DeviceInit(CommandLineArgs &args)
 
 
 
-
-/******************************************************************************
- * Templated routines for printing keys/values to the console 
- ******************************************************************************/
-
-template<typename T> 
-void PrintValue(T val) {
-	val.Print();
-}
-
-template<>
-void PrintValue<char>(char val) {
-	printf("%d", val);
-}
-
-template<>
-void PrintValue<short>(short val) {
-	printf("%d", val);
-}
-
-template<>
-void PrintValue<int>(int val) {
-	printf("%d", val);
-}
-
-template<>
-void PrintValue<long>(long val) {
-	printf("%ld", val);
-}
-
-template<>
-void PrintValue<long long>(long long val) {
-	printf("%lld", val);
-}
-
-template<>
-void PrintValue<float>(float val) {
-	printf("%f", val);
-}
-
-template<>
-void PrintValue<double>(double val) {
-	printf("%f", val);
-}
-
-template<>
-void PrintValue<unsigned char>(unsigned char val) {
-	printf("%u", val);
-}
-
-template<>
-void PrintValue<unsigned short>(unsigned short val) {
-	printf("%u", val);
-}
-
-template<>
-void PrintValue<unsigned int>(unsigned int val) {
-	printf("%u", val);
-}
-
-template<>
-void PrintValue<unsigned long>(unsigned long val) {
-	printf("%lu", val);
-}
-
-template<>
-void PrintValue<unsigned long long>(unsigned long long val) {
-	printf("%llu", val);
-}
-
-
-
-/******************************************************************************
- * Helper routines for list construction and validation 
- ******************************************************************************/
-
-/**
- * Compares the equivalence of two arrays
- */
-template <typename T, typename SizeT>
-int CompareResults(T* computed, T* reference, SizeT len, bool verbose = true)
-{
-	for (SizeT i = 0; i < len; i++) {
-
-		if (computed[i] != reference[i]) {
-			printf("INCORRECT: [%lu]: ", (unsigned long) i);
-			PrintValue<T>(computed[i]);
-			printf(" != ");
-			PrintValue<T>(reference[i]);
-
-			if (verbose) {
-				printf("\nresult[...");
-				for (size_t j = (i >= 5) ? i - 5 : 0; (j < i + 5) && (j < len); j++) {
-					PrintValue<T>(computed[j]);
-					printf(", ");
-				}
-				printf("...]");
-				printf("\nreference[...");
-				for (size_t j = (i >= 5) ? i - 5 : 0; (j < i + 5) && (j < len); j++) {
-					PrintValue<T>(reference[j]);
-					printf(", ");
-				}
-				printf("...]");
-			}
-
-			return 1;
-		}
-	}
-
-	printf("CORRECT");
-	return 0;
-}
-
-
-/**
- * Verify the contents of a device array match those
- * of a host array
- */
-template <typename T>
-int CompareDeviceResults(
-	T *h_reference,
-	T *d_data,
-	size_t num_elements,
-	bool verbose = true,
-	bool display_data = false)
-{
-	// Allocate array on host
-	T *h_data = (T*) malloc(num_elements * sizeof(T));
-
-	// Reduction data back
-	cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
-
-	// Display data
-	if (display_data) {
-		printf("Reference:\n");
-		for (int i = 0; i < num_elements; i++) {
-			PrintValue(h_reference[i]);
-			printf(", ");
-		}
-		printf("\n\nData:\n");
-		for (int i = 0; i < num_elements; i++) {
-			PrintValue(h_data[i]);
-			printf(", ");
-		}
-		printf("\n\n");
-	}
-
-	// Check
-	int retval = CompareResults(h_data, h_reference, num_elements, verbose);
-
-	// Cleanup
-	if (h_data) free(h_data);
-
-	return retval;
-}
-
-
-/**
- * Verify the contents of a device array match those
- * of a host array
- */
-template <typename T>
-int CompareDeviceDeviceResults(
-	T *d_reference,
-	T *d_data,
-	size_t num_elements,
-	bool verbose = true,
-	bool display_data = false)
-{
-	// Allocate array on host
-	T *h_reference = (T*) malloc(num_elements * sizeof(T));
-	T *h_data = (T*) malloc(num_elements * sizeof(T));
-
-	// Reduction data back
-	cudaMemcpy(h_reference, d_reference, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
-	cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
-
-	// Display data
-	if (display_data) {
-		printf("Reference:\n");
-		for (int i = 0; i < num_elements; i++) {
-			PrintValue(h_reference[i]);
-			printf(", ");
-		}
-		printf("\n\nData:\n");
-		for (int i = 0; i < num_elements; i++) {
-			PrintValue(h_data[i]);
-			printf(", ");
-		}
-		printf("\n\n");
-	}
-
-	// Check
-	int retval = CompareResults(h_data, h_reference, num_elements, verbose);
-
-	// Cleanup
-	if (h_reference) free(h_reference);
-	if (h_data) free(h_data);
-
-	return retval;
-}
-
-
-/**
- * Verify the contents of a device array match those
- * of a host array
- */
-template <typename T>
-void DisplayDeviceResults(
-	T *d_data,
-	size_t num_elements)
-{
-	// Allocate array on host
-	T *h_data = (T*) malloc(num_elements * sizeof(T));
-
-	// Reduction data back
-	cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
-
-	// Display data
-	printf("\n\nData:\n");
-	for (int i = 0; i < num_elements; i++) {
-		PrintValue(h_data[i]);
-		printf(", ");
-	}
-	printf("\n\n");
-
-	// Cleanup
-	if (h_data) free(h_data);
-}
 
 
 

@@ -133,6 +133,9 @@ void BFSGraph_serial(graph<VertexId, SizeT, Value> &g, VertexId source)
 	}
 
 	printf("serial bfs terminates\n");	
+
+	levels.print_log();
+
     levels.del();
     visited.del();
     workset1.del();
