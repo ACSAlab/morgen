@@ -39,46 +39,46 @@ BFSKernel(SizeT     *row_offsets,
 {
 	int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-	// write to an empty workset
-	*sizeTo = 0;
+	// writing to an empty buffer
+	if (tid == 0) *sizeTo = 0;
+	__syncthreads();
 
-	for (int j = tid; j < *sizeFrom; j += blockDim.x * gridDim.x) {
+	for (SizeT j = tid; j < *sizeFrom; j += blockDim.x * gridDim.x) {
 
 		// read the who-am-I info from the workset, visit it immediately
 		VertexId outNode = worksetFrom[j];
-
 		levels[outNode] = curLevel;
 
-		SizeT outEdgeStart = row_offsets[j];
-		SizeT outEdgeEnd = row_offsets[j+1];
+		SizeT outEdgeFirst = row_offsets[outNode];
+		SizeT outEdgeLast = row_offsets[outNode+1];
 
-		// In this implemention, parallelism is exploited 
-		// at a coarse granularity size
-		for (int i = outEdgeStart; i < outEdgeEnd; i++) {
-			VertexId inNode = column_indices[i];
+		// serial expansion
+		for (SizeT edge = outEdgeFirst; edge < outEdgeLast; edge++) {
+
+			VertexId inNode = column_indices[edge];
 
 			int old = atomicExch( (int*)&visited[inNode], 1 );
 
 			if (old == 0) {	
-				int pos= atomicAdd( (SizeT*) &(*sizeTo), 1 );
+				// fine-grained allocation
+				SizeT pos= atomicAdd( (SizeT*) &(*sizeTo), 1 );
 				worksetTo[pos] = inNode;
 			}
-		}		
+		}	
+
 	}
 }
 
 
 template<typename VertexId, typename SizeT, typename Value>
-void BFSGraph(graph<VertexId, SizeT, Value> &g, VertexId start)
+void BFSGraph_gpu_queue(graph<VertexId, SizeT, Value> &g, VertexId source)
 {
 
 	// To make better use of the workset, we create two.
 	// Instead of creating a new one everytime in each BFS level,
 	// we just expand vertices from one to another
-
-
-    subvertices<VertexId, SizeT> workset1(g.n);
-    subvertices<VertexId, SizeT> workset2(g.n);
+    queued<VertexId, SizeT> workset1(g.n);
+    queued<VertexId, SizeT> workset2(g.n);
 
 
     // Initalize auxiliary list
@@ -86,67 +86,86 @@ void BFSGraph(graph<VertexId, SizeT, Value> &g, VertexId start)
     levels.all_to(INF);
 
 
+    // visitation list: 0 for unvisited
     list<int, SizeT> visited(g.n);
     visited.all_to(0);
 
 
-	// from source node
-    workset1.append(start);   
-    visited.set(start, 1);
-
-
-
-    SizeT size = 1;
+	// traverse from source node
+    workset1.append(source);   
+    visited.set(source, 1);
+    SizeT worksetSize = 1;
+    SizeT lastWorksetSize = 0;
 	Value curLevel = 0;
+
 	// kernel configuration
 	int blockNum = 16;
 	int blockSize = 256;
 
 
-	while (size != 0) {
+	printf("gpu queued bfs starts\n");	
+
+	while (worksetSize > 0) {
+
+		lastWorksetSize = worksetSize;
+
+		// spawn minimal software blocks to cover the workset
+		blockNum = (worksetSize % blockSize == 0 ? 
+			worksetSize / blockSize :
+			worksetSize / blockSize + 1);
+
+		// kick off timer first
+		GpuTimer gpu_timer;
+		gpu_timer.start();
 
 		if (curLevel % 2 == 0) 
 		{
+
+			// call kernel with device pointers
 			BFSKernel<<<blockNum, blockSize>>>(g.d_row_offsets,
 				                               g.d_column_indices,
-				                               workset1.d_vertices,
+				                               workset1.d_elems,
 				                               workset1.d_sizep,
-				                               workset2.d_vertices,
+				                               workset2.d_elems,
 				                               workset2.d_sizep,
-				                               levels.d_elements,
+				                               levels.d_elems,
 				                               curLevel,     
-				                               visited.d_elements);
+				                               visited.d_elems);
 
-			if (HandleError(cudaThreadSynchronize(), "BFSKernel failed ",
-			                __FILE__, __LINE__)) break;
+			if (HandleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
-			workset2.print();              
-			size = *workset2.sizep;
-			printf("next size: %d\n", size);
+			worksetSize = workset2.size();
+
 		 } else {
+
+
 		 	BFSKernel<<<blockNum, blockSize>>>(g.d_row_offsets,
 		 		                               g.d_column_indices,
-		 		                               workset2.d_vertices,
+		 		                               workset2.d_elems,
 		 		                               workset2.d_sizep,
-		 		                               workset1.d_vertices,
+		 		                               workset1.d_elems,
 		 		                               workset1.d_sizep,
-		 		                               levels.d_elements,
+		 		                               levels.d_elems,
 		 		                               curLevel,
-		 		                               visited.d_elements);
+		 		                               visited.d_elems);
 
-			if (HandleError(cudaThreadSynchronize(), "BFSKernel failed ",
-			                __FILE__, __LINE__)) break;
+			if (HandleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
-		 	workset1.print();
-		 	size = *workset1.sizep;
-		 	printf("next size: %d\n", size);
+		 	
+		 	worksetSize = workset1.size();
 		 }
-		 ++curLevel;
+
+		 // timer end
+		 gpu_timer.stop();
+		 printf("%d\t%d\t%f\n", curLevel, lastWorksetSize, gpu_timer.elapsedMillis());
+		 curLevel += 1;
+
 	}
     
-    
+    printf("gpu queued bfs terminates\n");	
 
-    levels.print();
+
+    //levels.print();
 
     levels.del();
     visited.del();

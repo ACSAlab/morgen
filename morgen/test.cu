@@ -19,7 +19,8 @@
 #include "graphgen.cuh"
 #include "graph.cuh"
 #include "cuda_util.cuh"
-#include "bfs.cu"
+#include "bfs_queue.cu"
+#include "serial_bfs.cpp"
 
 int main(int argc, char **argv) {
 	
@@ -43,11 +44,13 @@ int main(int argc, char **argv) {
 
 	myGraphGen<VertexId, SizeT, Value>(fp, ga);
 
-	ga.printInfo(true);
+	ga.printInfo(false);
 	ga.printOutDegrees();
 
 	// traverse it
-	BFSGraph<VertexId, SizeT, Value>(ga, (VertexId) 0);
+	BFSGraph_gpu_queue<VertexId, SizeT, Value>(ga, (VertexId) 0);
+
+	BFSGraph_serial<VertexId, SizeT, Value>(ga, (VertexId) 0);
 
 
 	fclose(fp);

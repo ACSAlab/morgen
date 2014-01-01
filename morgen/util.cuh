@@ -16,6 +16,9 @@
  */
 
 
+#pragma once
+
+
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <stdio.h>
@@ -29,6 +32,90 @@
 #include <iostream>
 
 
+/**************************************************************************
+ * Static queue
+ **************************************************************************/
+template<typename VertexId, typename SizeT>
+struct queued {
+
+    SizeT     n;         //maximal allocated size
+    VertexId  *elems;
+    SizeT     *sizep;      //the logical size will be changed on gpu 
+
+    VertexId  *d_elems;
+    SizeT     *d_sizep;
+
+    queued() : n(0), sizep(NULL), elems(NULL), d_sizep(NULL), d_elems(NULL) {} 
+
+    queued(SizeT _n) { init(_n); }
+
+    void init(SizeT _n) {
+        n = _n;
+    
+        // Pinned and mapped in memory
+        int flags = cudaHostAllocMapped;
+        if (HandleError(cudaHostAlloc((void **)&elems, sizeof(SizeT) * n, flags),
+                        "queued: cudaHostAlloc(elems) failed", __FILE__, __LINE__)) 
+            exit(1);
+        if (HandleError(cudaHostAlloc((void **)&sizep, sizeof(SizeT) * 1, flags),
+                        "queued: cudaHostAlloc(sizep) failed", __FILE__, __LINE__)) 
+            exit(1);
+
+        *sizep = 0;
+
+        // Get the device pointer
+        if (HandleError(cudaHostGetDevicePointer((void **) &d_elems, (void *) elems, 0),
+                        "queued: cudaHostGetDevicePointer(d_elems) failed", __FILE__, __LINE__))
+            exit(1);
+        if (HandleError(cudaHostGetDevicePointer((void **) &d_sizep, (void *) sizep, 0),
+                        "queued: cudaHostGetDevicePointer(d_sizep) failed", __FILE__, __LINE__))
+            exit(1);
+
+    }
+
+
+    /**
+     * A.K.A. enqueue
+     */
+    int append(VertexId v) {
+        if (*sizep >= n)    // has been full
+            return -1;
+        else {
+            elems[*sizep] = v; 
+            *sizep += 1;
+            return 0;
+        }
+    }
+
+
+    int size() {
+        if (sizep)  return *sizep;
+        else        return -1;
+    }
+
+    void print() {
+        for (int i = 0; i < *sizep; i++) {
+            printf("%lld ", (long long)elems[i]);
+        }
+        printf("\n");
+    }
+
+    void del() {
+        HandleError(cudaFreeHost(elems), "queued: cudaFreeHost(elems) failed",
+                    __FILE__, __LINE__);
+        HandleError(cudaFreeHost(sizep), "queued: cudaFreeHost(sizep) failed",
+                    __FILE__, __LINE__);
+        n = 0;
+        sizep = NULL;
+        d_sizep = NULL;
+        elems = NULL;
+        d_elems = NULL;
+    }
+
+ };
+
+
+
 /******************************************************************************
  * Auxiliary list
  ******************************************************************************/
@@ -36,10 +123,10 @@ template<typename Value, typename SizeT>
 struct list
 {
 	SizeT   n;
-	Value   *elements;
-	Value   *d_elements;
+	Value   *elems;
+	Value   *d_elems;
 
-	list() : n(0), elements(NULL), d_elements(NULL) {}
+	list() : n(0), elems(NULL), d_elems(NULL) {}
 
 	list(SizeT _n) { init(_n); }
 
@@ -48,37 +135,37 @@ struct list
 
 		// mapped & pinned
 		int flags = cudaHostAllocMapped;
-        if (HandleError(cudaHostAlloc((void **)&elements, sizeof(Value) * _n, flags),
-                        "list: cudaHostAlloc(elements) failed", __FILE__, __LINE__)) 
+        if (HandleError(cudaHostAlloc((void **)&elems, sizeof(Value) * n, flags),
+                        "list: cudaHostAlloc(elems) failed", __FILE__, __LINE__)) 
         	exit(1);
-        if (HandleError(cudaHostGetDevicePointer((void **) &d_elements, (void *) elements, 0),
-                        "list: cudaHostGetDevicePointer(d_elements) failed", __FILE__, __LINE__))
+        if (HandleError(cudaHostGetDevicePointer((void **) &d_elems, (void *) elems, 0),
+                        "list: cudaHostGetDevicePointer(d_elems) failed", __FILE__, __LINE__))
             exit(1);
 	}
 
 	void del() {
-		HandleError(cudaFreeHost(elements), "list: cudaFreeHost(elements) failed",
+		HandleError(cudaFreeHost(elems), "list: cudaFreeHost(elems) failed",
                     __FILE__, __LINE__);
-		elements = NULL;
-		d_elements = NULL;
+		elems = NULL;
+		d_elems = NULL;
 		n = 0;
 	}
 
 	// setting to some value on CPU serially
 	void all_to(Value x) {
-		for (int i=0; i<n; i++) {
-			elements[i] = x;
+		for (int i = 0; i < n; i++) {
+			elems[i] = x;
 		}
 	}
 
 	void print() {
-		for (int i=0; i<n; i++) {
-			printf("%lld ", (long long)elements[i]);
+		for (int i = 0; i < n; i++) {
+			printf("%lld ", (long long)elems[i]);
 		}
 		printf("\n");
 	}
 
-	void set(SizeT i, Value x) { elements[i] = x; }
+	void set(SizeT i, Value x) { elems[i] = x; }
 
 };
 
@@ -513,36 +600,36 @@ struct CpuTimer
 
 struct GpuTimer
 {
-	cudaEvent_t start;
-	cudaEvent_t stop;
+	cudaEvent_t _start;
+	cudaEvent_t _stop;
 
 	GpuTimer()
 	{
-		cudaEventCreate(&start);
-		cudaEventCreate(&stop);
+		cudaEventCreate(&_start);
+		cudaEventCreate(&_stop);
 	}
 
 	~GpuTimer()
 	{
-		cudaEventDestroy(start);
-		cudaEventDestroy(stop);
+		cudaEventDestroy(_start);
+		cudaEventDestroy(_stop);
 	}
 
-	void Start()
+	void start()
 	{
-		cudaEventRecord(start, 0);
+		cudaEventRecord(_start, 0);
 	}
 
-	void Stop()
+	void stop()
 	{
-		cudaEventRecord(stop, 0);
+		cudaEventRecord(_stop, 0);
 	}
 
-	float ElapsedMillis()
+	float elapsedMillis()
 	{
 		float elapsed;
-		cudaEventSynchronize(stop);
-		cudaEventElapsedTime(&elapsed, start, stop);
+		cudaEventSynchronize(_stop);
+		cudaEventElapsedTime(&elapsed, _start, _stop);
 		return elapsed;
 	}
 };
