@@ -22,7 +22,10 @@
 #include "bfs_queue.cu"
 #include "bfs_serial.cpp"
 #include "bfs_bitmask.cu"
+#include "bfs_hash.cu"
 
+
+ 
 void usage() {
 	printf("\ntest <graph type> <graph type args> [--device=<device index>] "
 			"[--v] [--instrumented] [--i=<num-iterations>] [--undirected]"
@@ -77,6 +80,10 @@ int main(int argc, char **argv) {
 	} else if (bfs_type == "queue") {
 
 		BFSGraph_gpu_queue<VertexId, SizeT, Value>(ga, (VertexId) 0);
+
+	} else if (bfs_type == "hash") {
+
+		BFSGraph_gpu_hash<VertexId, SizeT, Value>(ga, (VertexId) 0);
 
 	} else {
 		fprintf(stderr, "no traverse type is specified\n");

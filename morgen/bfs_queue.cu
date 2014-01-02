@@ -44,10 +44,10 @@ BFSKernel(SizeT     *row_offsets,
 	if (tid == 0) *sizeTo = 0;
 	__syncthreads();
 
-	for (SizeT j = tid; j < *sizeFrom; j += blockDim.x * gridDim.x) {
-
-		// read the who-am-I info from the workset, visit it immediately
-		VertexId outNode = worksetFrom[j];
+	if (tid < *sizeFrom) {
+		
+		// read the who-am-I info from the workset
+		VertexId outNode = worksetFrom[tid];
 		levels[outNode] = curLevel;
 
 		SizeT outEdgeFirst = row_offsets[outNode];

@@ -32,7 +32,12 @@
 #include <iostream>
 
 
+/**************************************************************************
+ * Some macros
+ **************************************************************************/
+#define MORGEN_MAX(a, b) ((a > b) ? a : b)
 
+#define MORGEN_MIN(a, b) ((a < b) ? a : b)
 
 /**************************************************************************
  * Single variable on GPU
@@ -43,13 +48,15 @@ struct var {
     Value  *elem;
     Value  *d_elem;      
 
-    var() { 
+    var(Value v = 0) { 
         // Pinned and mapped in memory
         int flags = cudaHostAllocMapped;
 
         if (HandleError(cudaHostAlloc((void **)&elem, sizeof(Value) * 1, flags),
                         "var: cudaHostAlloc(elem) failed", __FILE__, __LINE__)) 
             exit(1);
+
+        *elem = v;
 
         // Get the device pointer
         if (HandleError(cudaHostGetDevicePointer((void **) &d_elem, (void *) elem, 0),
@@ -75,6 +82,109 @@ struct var {
  };
 
 
+/**************************************************************************
+ * Static queue
+ **************************************************************************/
+template<typename Value, typename SizeT>
+struct hashed {
+
+    SizeT   slot_num;
+    SizeT   n;                // size in all
+    SizeT   each_slot_size;
+
+    Value  	*elems;
+    SizeT   *slot_sizes;      //the logical size will be changed on gpu 
+    SizeT   *slot_offsets;    
+
+    Value   *d_elems;
+    SizeT   *d_slot_sizes;
+    SizeT   *d_slot_offsets;
+
+    hashed() : n(0), slot_num(0), elems(NULL), slot_sizes(NULL), slot_offsets(NULL), d_elems(NULL), d_slot_sizes(NULL), d_slot_offsets(NULL) {} 
+
+    hashed(SizeT _n, SizeT s_num) {  
+
+        slot_num = s_num;
+
+        // e.g. 7 elements will fit into 4 slots
+        // each slots has 2 elements
+    	each_slot_size = _n / slot_num + 1;
+    	n = each_slot_size * slot_num;
+
+        // Pinned and mapped in memory
+        int flags = cudaHostAllocMapped;
+
+        for (int i = 0; i < slot_num; i++) {
+        	if (HandleError(cudaHostAlloc((void **)&slot_sizes, sizeof(SizeT) * slot_num, flags),
+          	                "hashed: cudaHostAlloc(elems) failed", __FILE__, __LINE__)) exit(1);
+        	if (HandleError(cudaHostAlloc((void **)&slot_offsets, sizeof(SizeT) * slot_num, flags),
+                            "hashed: cudaHostAlloc(sizep) failed", __FILE__, __LINE__)) exit(1);
+        	if (HandleError(cudaHostAlloc((void **)&elems, sizeof(SizeT) * n, flags),
+                            "hashed: cudaHostAlloc(sizep) failed", __FILE__, __LINE__)) exit(1);
+    	}
+
+    	// initalize
+    	for (int i = 0; i < slot_num; i++) {
+    		slot_sizes[i] = 0;
+    		slot_offsets[i] = i * each_slot_size;
+    	}
+
+        // Get the device pointer
+        if (HandleError(cudaHostGetDevicePointer((void **) &d_elems, (void *) elems, 0),
+                        "hashed: cudaHostGetDevicePointer(d_elems) failed", __FILE__, __LINE__)) exit(1);
+        if (HandleError(cudaHostGetDevicePointer((void **) &d_slot_sizes, (void *) slot_sizes, 0),
+                        "hashed: cudaHostGetDevicePointer(d_sizep) failed", __FILE__, __LINE__)) exit(1);
+        if (HandleError(cudaHostGetDevicePointer((void **) &d_slot_offsets, (void *) slot_offsets, 0),
+                        "hashed: cudaHostGetDevicePointer(d_sizep) failed", __FILE__, __LINE__)) exit(1);
+    }
+
+
+	// insert on cpu end
+    int insert(Value key) {
+    	SizeT hash = key % slot_num;
+    	slot_sizes[hash] += 1;  // increase before writing
+    	SizeT pos = slot_offsets[hash] + slot_sizes[hash];
+    	elems[pos] = key;
+    	return 0;  // succeed
+    }
+
+    // get the largest slot in the hash table
+    int max_slot_size() {
+    	SizeT  logical_size = 0;
+    	for (int i = 0 ; i < slot_num; i++) {
+    		logical_size = MORGEN_MAX(logical_size, slot_sizes[i]);
+    	}
+    	return logical_size;
+    }
+
+    // sum each slot size up
+    int sum_slot_size() {
+    	SizeT  logical_size = 0;
+    	for (int i = 0 ; i < slot_num; i++) {
+    		logical_size += slot_sizes[i];
+    	}
+    	return logical_size;
+    }
+
+    void del() {
+        HandleError(cudaFreeHost(elems), "hashed: cudaFreeHost(elems) failed", __FILE__, __LINE__);
+        HandleError(cudaFreeHost(slot_sizes), "hashed: cudaFreeHost(slot_sizes) failed", __FILE__, __LINE__);
+        HandleError(cudaFreeHost(slot_offsets), "hashed: cudaFreeHost(slot_offsets) failed", __FILE__, __LINE__);
+        
+        n = 0;
+        slot_num = 0;
+        each_slot_size = 0;
+        
+        elems = NULL;
+        slot_sizes = NULL;     
+        slot_offsets = NULL;  
+        d_elems = NULL;
+        d_slot_sizes = NULL;     
+        d_slot_offsets = NULL; 
+    }
+
+ };
+
 
 /**************************************************************************
  * Static queue
@@ -91,9 +201,8 @@ struct queued {
 
     queued() : n(0), sizep(NULL), elems(NULL), d_sizep(NULL), d_elems(NULL) {} 
 
-    queued(SizeT _n) { init(_n); }
+    queued(SizeT _n) { 
 
-    void init(SizeT _n) {
         n = _n;
     
         // Pinned and mapped in memory
@@ -172,9 +281,8 @@ struct list
 
 	list() : n(0), elems(NULL), d_elems(NULL) {}
 
-	list(SizeT _n) { init(_n); }
+	list(SizeT _n) {
 
-	void init(SizeT _n) {
 		n = _n;
 
 		// mapped & pinned
