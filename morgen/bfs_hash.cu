@@ -94,14 +94,20 @@ BFSKernel(SizeT     *row_offsets,
 
 
 template<typename VertexId, typename SizeT, typename Value>
-void BFSGraph_gpu_hash(graph<VertexId, SizeT, Value> &g, VertexId source)
+void BFSGraph_gpu_hash(graph<VertexId, SizeT, Value> &g, VertexId source, int slots)
 {
+
+	if (slots > 0) printf("setting up slots = %d\n", slots);
+	else {
+		printf("slots should be a positive number\n");
+		return;
+	}
 
 	// To make better use of the workset, we create two.
 	// Instead of creating a new one everytime in each BFS level,
 	// we just expand vertices from one to another
-    hashed<VertexId, SizeT> workset1(g.n, 4);
-    hashed<VertexId, SizeT> workset2(g.n, 4);
+    hashed<VertexId, SizeT> workset1(g.n, slots);
+    hashed<VertexId, SizeT> workset2(g.n, slots);
 
 
     // Initalize auxiliary list
@@ -131,7 +137,14 @@ void BFSGraph_gpu_hash(graph<VertexId, SizeT, Value> &g, VertexId source)
 	int blockSize = 256;
 
 
-	printf("gpu queued bfs starts\n");	
+	printf("gpu hashed bfs starts\n");	
+	printf("level\t"
+		   "slot_size\t"
+		   "frontier_size\t"
+		   "ratio\t"
+		   "time\n");
+
+	float total_millis = 0.0;
 
 	while (worksetSize > 0) {
 
@@ -198,13 +211,21 @@ void BFSGraph_gpu_hash(graph<VertexId, SizeT, Value> &g, VertexId source)
 
 		 // timer end
 		 gpu_timer.stop();
-		 printf("%d\t%d\t%d\t%f\n", curLevel, lastWorksetSize, lastActualWorksetSize, gpu_timer.elapsedMillis());
+
+		 float mapping_efficiency = (float) lastActualWorksetSize / (lastWorksetSize * slots);
+		 
+		 total_millis += gpu_timer.elapsedMillis();
+
+		 printf("%d\t%d\t%d\t%.3f\t%f\n", curLevel, lastWorksetSize, lastActualWorksetSize,
+		 	    mapping_efficiency, gpu_timer.elapsedMillis());
+
 		 curLevel += 1;
 
 	}
     
-    printf("gpu queued bfs terminates\n");	
-
+    printf("gpu hashed bfs terminates\n");
+    float billion_edges_per_second = (float)g.m / total_millis / 1000000.0;
+    printf("time(s): %f   speed(BE/s): %f\n", total_millis / 1000.0, billion_edges_per_second);
 
     levels.print_log();
 

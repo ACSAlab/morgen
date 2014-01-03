@@ -499,23 +499,23 @@ void DeviceInit(CommandLineArgs &args)
 
 struct CpuTimer
 {
-	rusage start;
-	rusage stop;
+	rusage _start;
+	rusage _stop;
 
-	void Start()
+	void start()
 	{
-		getrusage(RUSAGE_SELF, &start);
+		getrusage(RUSAGE_SELF, &_start);
 	}
 
-	void Stop()
+	void stop()
 	{
-		getrusage(RUSAGE_SELF, &stop);
+		getrusage(RUSAGE_SELF, &_stop);
 	}
 
-	float ElapsedMillis()
+	float elapsedMillis()
 	{
-		float sec = stop.ru_utime.tv_sec - start.ru_utime.tv_sec;
-		float usec = stop.ru_utime.tv_usec - start.ru_utime.tv_usec;
+		float sec = _stop.ru_utime.tv_sec - _start.ru_utime.tv_sec;
+		float usec = _stop.ru_utime.tv_usec - _start.ru_utime.tv_usec;
 
 		return (sec * 1000) + (usec / 1000);
 	}

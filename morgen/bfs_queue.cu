@@ -106,6 +106,13 @@ void BFSGraph_gpu_queue(graph<VertexId, SizeT, Value> &g, VertexId source)
 
 
 	printf("gpu queued bfs starts\n");	
+	printf("level\t"
+		   "frontier_size\t"
+		   "time\n");
+
+
+	float total_milllis = 0.0;
+
 
 	while (worksetSize > 0) {
 
@@ -160,11 +167,14 @@ void BFSGraph_gpu_queue(graph<VertexId, SizeT, Value> &g, VertexId source)
 		 // timer end
 		 gpu_timer.stop();
 		 printf("%d\t%d\t%f\n", curLevel, lastWorksetSize, gpu_timer.elapsedMillis());
+		 total_milllis += gpu_timer.elapsedMillis();
 		 curLevel += 1;
 
 	}
     
     printf("gpu queued bfs terminates\n");	
+    float billion_edges_per_second = (float)g.m / total_milllis / 1000000.0;
+    printf("time(s): %f   speed(BE/s): %f\n", total_milllis / 1000.0, billion_edges_per_second);
 
 
     levels.print_log();

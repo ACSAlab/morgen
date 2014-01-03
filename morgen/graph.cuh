@@ -28,6 +28,7 @@
 
 /**************************************************************************
  * The graph is represented as CSR format and resides in the pinned memory
+ * all edges in the graph are directed
  **************************************************************************/
 template<typename VertexId, typename SizeT, typename Value>
 struct graph {

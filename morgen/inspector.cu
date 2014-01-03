@@ -1,5 +1,5 @@
 /*
- *   For testing
+ *   For inspecting graph structure before runs
  *
  *   Copyright (C) 2013-2014 by
  *   Yichao Cheng        onesuperclark@gmail.com
@@ -18,18 +18,13 @@
 
 #include "graphgen.cuh"
 #include "graph.cuh"
+#include "graph.cuh"
+#include "util.cuh"
 #include "cuda_util.cuh"
-#include "bfs_queue.cu"
 #include "bfs_serial.cpp"
-#include "bfs_bitmask.cu"
-#include "bfs_hash.cu"
-
-
 
 void usage() {
-	printf("\ntest <graph type> <graph type args> [--device=<device index>] "
-			"[--v] [--instrumented] [--i=<num-iterations>] [--undirected]"
-			"[--src=< <source idx> | randomize >]\n"
+	printf("\ninspect <graph> [--distribution]\n"
 			"\n"
 			"\n");
 }
@@ -40,7 +35,7 @@ int main(int argc, char **argv) {
 	
 	CommandLineArgs args(argc, argv);
 
-	if ((argc < 3) || args.CheckCmdLineFlag("help")) {
+	if ((argc < 2) || args.CheckCmdLineFlag("help")) {
 		usage();
 		return 1;
 	}
@@ -62,36 +57,11 @@ int main(int argc, char **argv) {
 	myGraphGen<VertexId, SizeT, Value>(fp, ga);
 
 	ga.printInfo(false);
-	//ga.printOutDegrees();
+	ga.printOutDegrees();
 
-	std::string bfs_type = argv[2];
 
-	VertexId source = 0;
-	args.GetCmdLineArgument("source", source);
-	printf("traverse from %lld\n", source);
-
-	// traverse it
-	if (bfs_type == "serial") {
-
-		BFSGraph_serial<VertexId, SizeT, Value>(ga, source);
-
-	} else if (bfs_type == "bitmask") {
-
-		BFSGraph_gpu_bitmask<VertexId, SizeT, Value>(ga, source);
-
-	} else if (bfs_type == "queue") {
-
-		BFSGraph_gpu_queue<VertexId, SizeT, Value>(ga, source);
-
-	} else if (bfs_type == "hash") {
-
-		int slots = 0;
-		args.GetCmdLineArgument("slots", slots);
-		BFSGraph_gpu_hash<VertexId, SizeT, Value>(ga, source, slots);
-
-	} else {
-		fprintf(stderr, "no traverse type is specified\n");
-	}
+	if (args.CheckCmdLineFlag("distribution"))
+		BFSGraph_serial<VertexId, SizeT, Value>(ga, (VertexId) 0, true);
 
 
 	fclose(fp);

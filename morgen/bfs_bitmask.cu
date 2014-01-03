@@ -131,6 +131,10 @@ void BFSGraph_gpu_bitmask(graph<VertexId, SizeT, Value> &g, VertexId source)
 		g.n / blockSize + 1);
 
 	printf("gpu bitmasked bfs starts\n");	
+	printf("level\t"
+		   "time\n");
+
+	float total_milllis = 0.0;
 
 	// loop as long as the flag is set
 	while (terminate.getVal() == 0) {
@@ -166,11 +170,15 @@ void BFSGraph_gpu_bitmask(graph<VertexId, SizeT, Value> &g, VertexId source)
 		 gpu_timer.stop();
 
 		 printf("%d\t%f\n", curLevel, gpu_timer.elapsedMillis());
+		 total_milllis += gpu_timer.elapsedMillis();
+
 		 curLevel += 1;
 
 	}
     
     printf("gpu bitmasked bfs terminates\n");	
+    float billion_edges_per_second = (float)g.m / total_milllis / 1000000.0;
+    printf("time(s): %f   speed(BE/s): %f\n", total_milllis / 1000.0, billion_edges_per_second);
 
 
     levels.print_log();

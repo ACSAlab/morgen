@@ -63,7 +63,7 @@ BFSCore(SizeT     *row_offsets,
 
 
 template<typename VertexId, typename SizeT, typename Value>
-void BFSGraph_serial(graph<VertexId, SizeT, Value> &g, VertexId source)
+void BFSGraph_serial(graph<VertexId, SizeT, Value> &g, VertexId source, bool verbose = false)
 {
 
 	// To make better use of the workset, we create two.
@@ -94,8 +94,17 @@ void BFSGraph_serial(graph<VertexId, SizeT, Value> &g, VertexId source)
 
 
     printf("serial bfs starts\n");	
+	printf("level\t"
+		   "frontier_size\t"
+		   "time\n");
+
+    float total_millis = 0.0;
 
     while (worksetSize > 0) {
+
+
+    	CpuTimer timer;
+    	timer.start();
 
 		lastWorksetSize = worksetSize;
 
@@ -113,6 +122,18 @@ void BFSGraph_serial(graph<VertexId, SizeT, Value> &g, VertexId source)
 
 			worksetSize = workset2.size();
 
+			// traverse workset set, and query the edge number, then print it
+			if (verbose) {
+				for (int i = 0; i < *workset2.sizep; i++) {
+					VertexId outNode = workset2.elems[i];
+					SizeT outEdgeFirst = g.row_offsets[outNode];
+					SizeT outEdgeLast = g.row_offsets[outNode+1];
+					SizeT edges = outEdgeLast - outEdgeFirst;
+					printf("%d\t", edges);
+				}
+				printf("\n");
+			}
+
 		} else {
 
 			BFSCore(g.row_offsets,
@@ -127,13 +148,31 @@ void BFSGraph_serial(graph<VertexId, SizeT, Value> &g, VertexId source)
 
 			worksetSize = workset1.size();
 
+			// traverse workset set, and query the edge number, then print it
+			if (verbose) {
+				for (int i = 0; i < *workset1.sizep; i++) {
+					VertexId outNode = workset1.elems[i];
+					SizeT outEdgeFirst = g.row_offsets[outNode];
+					SizeT outEdgeLast = g.row_offsets[outNode+1];
+					SizeT edges = outEdgeLast - outEdgeFirst;
+					printf("%d\t", edges);
+				}
+				printf("\n");
+			}
+
 		}
-		printf("%d\t%d\n", curLevel, lastWorksetSize);
+
+		timer.stop();
+
+		// do not print the timing infos when printing distribution
+		if (!verbose) printf("%d\t%d\t%f\n", curLevel, lastWorksetSize, timer.elapsedMillis());
+		total_millis += timer.elapsedMillis();
 		curLevel += 1;
 	}
 
 	printf("serial bfs terminates\n");	
-
+	float billion_edges_per_second = (float)g.m / total_millis / 1000000.0;
+    printf("time(s): %f   speed(BE/s): %f\n", total_millis / 1000.0, billion_edges_per_second);
 	levels.print_log();
 
     levels.del();
