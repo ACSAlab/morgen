@@ -16,20 +16,25 @@
  */
 
 
-#include "graphgen.cuh"
-#include "graph.cuh"
-#include "cuda_util.cuh"
-#include "bfs_queue.cu"
-#include "bfs_serial.cpp"
-#include "bfs_bitmask.cu"
-#include "bfs_hash.cu"
+
+#include <morgen/graph/graph.cuh>
+#include <morgen/graph/gen/mine.cuh>
+
+#include <morgen/bfs/bitmask.cu>
+#include <morgen/bfs/queue.cu>
+#include <morgen/bfs/hash.cu>
+#include <morgen/bfs/serial.cu>
+
+#include <morgen/utils/command_line.cuh>
+
+using namespace morgen;
 
 
 
 void usage() {
-	printf("\ntest <graph type> <graph type args> [--device=<device index>] "
-			"[--v] [--instrumented] [--i=<num-iterations>] [--undirected]"
-			"[--src=< <source idx> | randomize >]\n"
+	printf("\ntest <graph file> <graph type> [bfs type] [--device=<device index>] "
+			"[--slots=<number of slots>] [--outdegree] [--distribution]"
+			"[--src=<source idx>]\n"
 			"\n"
 			"\n");
 }
@@ -38,56 +43,93 @@ void usage() {
 
 int main(int argc, char **argv) {
 	
-	CommandLineArgs args(argc, argv);
-
-	if ((argc < 3) || args.CheckCmdLineFlag("help")) {
-		usage();
-		return 1;
-	}
-
 
 	typedef int VertexId;
 	typedef int SizeT;
 	typedef int Value;
 
-	graph<VertexId, SizeT, Value> ga;
+	graph::CsrGraph<VertexId, SizeT, Value> ga;
 
-	FILE *fp = fopen(argv[1], "r");
 
-	if (!fp) {
-		fprintf(stderr, "cannot open file\n");
-		exit(1);
+	/*********************************************************************
+	 * Commandline parsing
+	 *********************************************************************/
+	util::CommandLineArgs args(argc, argv);
+	// 0: name   1: path   2:graph_type    3: bfs_type
+	if ((argc < 4) || args.CheckCmdLineFlag("help")) {
+		usage();
+		return 1;
 	}
 
-	myGraphGen<VertexId, SizeT, Value>(fp, ga);
+	std::string graph_file_path = argv[1];
+	std::string graph_type = argv[2];
+	// if user only wants to inspect the graph, just skip this argument 
+	std::string bfs_type = argv[3];
 
-	ga.printInfo(false);
-	//ga.printOutDegrees();
+	// --outdegree : print out degrees of the graph?
+	bool print_outdegree = args.CheckCmdLineFlag("outdegree");
 
-	std::string bfs_type = argv[2];
+	// --distribution : print the edge distribution each level?
+	bool print_distribution = args.CheckCmdLineFlag("distribution");
 
+	// --source=<source node ID>
 	VertexId source = 0;
 	args.GetCmdLineArgument("source", source);
 	printf("traverse from %lld\n", source);
 
-	// traverse it
+	// --slots=<number of slots>
+	int slots = 0;
+	args.GetCmdLineArgument("slots", slots);
+
+	/*********************************************************************
+	 * Build the graph from a file
+	 *********************************************************************/
+	FILE *fp = fopen(graph_file_path.c_str(), "r");
+	if (!fp) {
+		fprintf(stderr, "cannot open file\n");
+		return 1;
+	}
+	
+
+	if (graph_type == "mine") {
+	
+		graph::gen::myGraphGen<VertexId, SizeT, Value>(fp, ga);
+	
+
+	} else {
+		fprintf(stderr, "no graph type is specified\n");
+		fclose(fp);
+		return 1;
+	}
+
+	// Graph Information display
+	ga.printInfo(false);  //  not verbose
+
+	if (print_outdegree) ga.printOutDegrees();
+	
+	if (print_distribution) 
+		bfs::BFSGraph_serial<VertexId, SizeT, Value>(ga, (VertexId) 0, true);
+
+
+	/*********************************************************************
+	 * Traversing
+	 *********************************************************************/
+
 	if (bfs_type == "serial") {
 
-		BFSGraph_serial<VertexId, SizeT, Value>(ga, source);
+		bfs::BFSGraph_serial<VertexId, SizeT, Value>(ga, source);
 
 	} else if (bfs_type == "bitmask") {
 
-		BFSGraph_gpu_bitmask<VertexId, SizeT, Value>(ga, source);
+		bfs::BFSGraph_gpu_bitmask<VertexId, SizeT, Value>(ga, source);
 
 	} else if (bfs_type == "queue") {
 
-		BFSGraph_gpu_queue<VertexId, SizeT, Value>(ga, source);
+		bfs::BFSGraph_gpu_queue<VertexId, SizeT, Value>(ga, source);
 
 	} else if (bfs_type == "hash") {
 
-		int slots = 0;
-		args.GetCmdLineArgument("slots", slots);
-		BFSGraph_gpu_hash<VertexId, SizeT, Value>(ga, source, slots);
+		bfs::BFSGraph_gpu_hash<VertexId, SizeT, Value>(ga, source, slots);
 
 	} else {
 		fprintf(stderr, "no traverse type is specified\n");
@@ -96,8 +138,5 @@ int main(int argc, char **argv) {
 
 	fclose(fp);
 	ga.del();
-
-
-
 	return 0;
 }

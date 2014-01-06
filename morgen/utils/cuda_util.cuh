@@ -1,5 +1,5 @@
 /*
- *   Some utils for CUDA
+ *   Utils for CUDA
  *
  *   Copyright (C) 2013 by
  *   Yichao Cheng        onesuperclark@gmail.com
@@ -20,6 +20,12 @@
 
 #include <stdio.h>
 
+
+
+namespace morgen {
+
+namespace util {
+
 /******************************************************************************
  * Wrap up the cudaError_t
  ******************************************************************************/
@@ -27,7 +33,7 @@
 /*
  * Locate the error when happened
  */
-cudaError_t HandleError(
+cudaError_t handleError(
     cudaError_t error,
     const char *msg,
     const char *filename,
@@ -50,7 +56,7 @@ cudaError_t HandleError(
 /*
  * just print the error string
  */
-cudaError_t HandleError(cudaError_t error)
+cudaError_t handleError(cudaError_t error)
 {
     if (error) {
         fprintf(stderr,
@@ -62,6 +68,7 @@ cudaError_t HandleError(cudaError_t error)
     return error;
 }
 
-
+}
+}
 
 

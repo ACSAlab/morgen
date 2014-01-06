@@ -19,10 +19,16 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 
-#include "cuda_util.cuh"
+#include <morgen/utils/cuda_util.cuh>
+#include <cuda_runtime_api.h>
 
+
+
+
+namespace morgen {
+
+namespace graph {
 
 
 
@@ -31,7 +37,7 @@
  * all edges in the graph are directed
  **************************************************************************/
 template<typename VertexId, typename SizeT, typename Value>
-struct graph {
+struct CsrGraph {
 
     SizeT     n;
     SizeT     m;
@@ -54,7 +60,7 @@ struct graph {
     /**
      * Default constructor(do not allocate memory since the n/m is unknown)
      */
-    graph() : n(0), m(0), row_offsets(NULL), column_indices(NULL), costs(NULL),
+    CsrGraph() : n(0), m(0), row_offsets(NULL), column_indices(NULL), costs(NULL),
               d_row_offsets(NULL), d_column_indices(NULL), d_costs(NULL) {}
 
 
@@ -75,13 +81,13 @@ struct graph {
         // of which can be obtained by calling cudaHostGetDevicePointer()
 
         int flags = cudaHostAllocMapped;
-        if (HandleError(cudaHostAlloc((void **) &row_offsets, sizeof(SizeT) * (n + 1), flags),
-                        "graph: cudaHostAlloc(row_offsets) failed", __FILE__, __LINE__)) 
+        if (util::handleError(cudaHostAlloc((void **) &row_offsets, sizeof(SizeT) * (n + 1), flags),
+                               "CsrGraph: cudaHostAlloc(row_offsets) failed", __FILE__, __LINE__)) 
             exit(1);
 
         // Get the device pointer
-        if (HandleError(cudaHostGetDevicePointer((void **) &d_row_offsets, (void *) row_offsets, 0),
-                        "graph: cudaHostGetDevicePointer(d_row_offsets) failed", __FILE__, __LINE__)) 
+        if (util::handleError(cudaHostGetDevicePointer((void **) &d_row_offsets, (void *) row_offsets, 0),
+                               "CsrGraph: cudaHostGetDevicePointer(d_row_offsets) failed", __FILE__, __LINE__)) 
             exit(1);
     }
 
@@ -93,20 +99,20 @@ struct graph {
         
         // Allocated in the pinned memory
         int flags = cudaHostAllocMapped;
-        if (HandleError(cudaHostAlloc((void **) &column_indices, sizeof(VertexId) * m, flags),
-                        "graph: cudaHostAlloc(column_indices) failed", __FILE__, __LINE__)) 
+        if (util::handleError(cudaHostAlloc((void **) &column_indices, sizeof(VertexId) * m, flags),
+                               "CsrGraph: cudaHostAlloc(column_indices) failed", __FILE__, __LINE__)) 
             exit(1);
-        if (HandleError(cudaHostAlloc((void **) &costs, sizeof(Value) * m, flags),
-                        "graph: cudaHostAlloc(costs) failed", __FILE__, __LINE__)) 
+        if (util::handleError(cudaHostAlloc((void **) &costs, sizeof(Value) * m, flags),
+                               "CsrGraph: cudaHostAlloc(costs) failed", __FILE__, __LINE__)) 
             exit(1);
         
         // Get the device pointer
-        if (HandleError(cudaHostGetDevicePointer((void **) &d_column_indices, (void *) column_indices, 0),
-                        "graph: cudaHostGetDevicePointer(d_column_indices) failed", __FILE__, __LINE__)) 
+        if (util::handleError(cudaHostGetDevicePointer((void **) &d_column_indices, (void *) column_indices, 0),
+                               "CsrGraph: cudaHostGetDevicePointer(d_column_indices) failed", __FILE__, __LINE__)) 
             exit(1);
                    
-        if (HandleError(cudaHostGetDevicePointer((void **) &d_costs, (void *) costs, 0),
-                        "graph: cudaHostGetDevicePointer(d_costs) failed", __FILE__, __LINE__)) 
+        if (util::handleError(cudaHostGetDevicePointer((void **) &d_costs, (void *) costs, 0),
+                               "CsrGraph: cudaHostGetDevicePointer(d_costs) failed", __FILE__, __LINE__)) 
             exit(1);
     }
 
@@ -116,12 +122,12 @@ struct graph {
      */
     void del() { 
         
-        HandleError(cudaFreeHost(row_offsets), "graph: cudaFreeHost(row_offsets) failed",
-                     __FILE__, __LINE__);
-        HandleError(cudaFreeHost(column_indices), "graph: cudaFreeHost(column_indices) failed",
-                     __FILE__, __LINE__);
-        HandleError(cudaFreeHost(costs), "graph: cudaFreeHost(costs) failed",
-                     __FILE__, __LINE__);
+        util::handleError(cudaFreeHost(row_offsets), "CsrGraph: cudaFreeHost(row_offsets) failed",
+                           __FILE__, __LINE__);
+        util::handleError(cudaFreeHost(column_indices), "CsrGraph: cudaFreeHost(column_indices) failed",
+                           __FILE__, __LINE__);
+        util::handleError(cudaFreeHost(costs), "CsrGraph: cudaFreeHost(costs) failed",
+                           __FILE__, __LINE__);
         
         n = 0;
         m = 0;
@@ -132,6 +138,11 @@ struct graph {
         d_column_indices = NULL;
         d_costs          = NULL;
       }
+
+
+    ~CsrGraph() {
+        del();
+    }
 
 
     /**
@@ -188,5 +199,8 @@ struct graph {
     }
 };
 
+
+} // Graph
+} // Morgen
 
 

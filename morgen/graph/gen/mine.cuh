@@ -17,37 +17,17 @@
 
 #pragma once
 
-#include "graph.cuh"
+#include <morgen/graph/graph.cuh>
 
-/**
- * Generate a tiny graph from a null graph
- */
-template<typename VertexId, typename SizeT, typename Value>
-void tinyGraphGen(graph<VertexId, SizeT, Value> &g)
-{
-    SizeT      n = 9;
-    SizeT      m = 11;
-    SizeT      r[] = {0, 2, 5, 5, 6, 8, 9, 9, 11, 11};
-    VertexId   c[] = {1, 3, 0, 2, 4, 4, 5, 7, 8, 6, 8};
-    Value      v[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-    g.init(n, m);
-
-    for (SizeT i = 0; i < n + 1; i++)
-        g.row_offsets[i] = r[i];
-
-    for (SizeT i = 0; i < m; i++) {
-        g.column_indices[i] = c[i];
-        g.costs[i] = v[i];
-    }
-}
-
+namespace morgen { 
+namespace graph {
+namespace gen {
 /**
  * Generate a graph from a user-defined format file
  * it take a pointer to the opened file
  */
 template<typename VertexId, typename SizeT, typename Value> 
-void myGraphGen(FILE *fp, graph<VertexId, SizeT, Value> &g)
+void myGraphGen(FILE *fp, CsrGraph<VertexId, SizeT, Value> &g)
 {
 	// read the number of nodes
 	SizeT  nodes; 
@@ -83,3 +63,7 @@ void myGraphGen(FILE *fp, graph<VertexId, SizeT, Value> &g)
 
 }
 
+
+} // Gen
+} // Graph
+} // Morgen

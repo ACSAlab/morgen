@@ -19,12 +19,19 @@
 
 #pragma once
 
-#include "cuda_util.cuh"
-#include "util.cuh"
+#include <morgen/utils/timing.cuh>
+#include <morgen/utils/list.cuh>
+#include <morgen/workset/queue.cuh>
+
 #include <cuda_runtime_api.h>
+
 
 #define INF -1
 
+
+namespace morgen {
+
+namespace bfs {
 
 template<typename VertexId, typename SizeT, typename Value>
 __global__ void
@@ -72,23 +79,23 @@ BFSKernel(SizeT     *row_offsets,
 
 
 template<typename VertexId, typename SizeT, typename Value>
-void BFSGraph_gpu_queue(graph<VertexId, SizeT, Value> &g, VertexId source)
+void BFSGraph_gpu_queue(const graph::CsrGraph<VertexId, SizeT, Value> &g, VertexId source)
 {
 
 	// To make better use of the workset, we create two.
 	// Instead of creating a new one everytime in each BFS level,
 	// we just expand vertices from one to another
-    queued<VertexId, SizeT> workset1(g.n);
-    queued<VertexId, SizeT> workset2(g.n);
+    workset::Queue<VertexId, SizeT> workset1(g.n);
+    workset::Queue<VertexId, SizeT> workset2(g.n);
 
 
     // Initalize auxiliary list
-    list<Value, SizeT> levels(g.n);
+    util::List<Value, SizeT> levels(g.n);
     levels.all_to(INF);
 
 
     // visitation list: 0 for unvisited
-    list<int, SizeT> visited(g.n);
+    util::List<int, SizeT> visited(g.n);
     visited.all_to(0);
 
 
@@ -124,7 +131,7 @@ void BFSGraph_gpu_queue(graph<VertexId, SizeT, Value> &g, VertexId source)
 			worksetSize / blockSize + 1);
 
 		// kick off timer first
-		GpuTimer gpu_timer;
+		util::GpuTimer gpu_timer;
 		gpu_timer.start();
 
 		if (curLevel % 2 == 0) 
@@ -141,7 +148,7 @@ void BFSGraph_gpu_queue(graph<VertexId, SizeT, Value> &g, VertexId source)
 				                               curLevel,     
 				                               visited.d_elems);
 
-			if (HandleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
+			if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
 			worksetSize = workset2.size();
 
@@ -158,7 +165,7 @@ void BFSGraph_gpu_queue(graph<VertexId, SizeT, Value> &g, VertexId source)
 		 		                               curLevel,
 		 		                               visited.d_elems);
 
-			if (HandleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
+			if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
 		 	
 		 	worksetSize = workset1.size();
@@ -185,3 +192,8 @@ void BFSGraph_gpu_queue(graph<VertexId, SizeT, Value> &g, VertexId source)
 	workset2.del();
 	
 }
+
+
+} // BFS
+
+} // Morgen

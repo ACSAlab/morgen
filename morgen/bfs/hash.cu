@@ -19,12 +19,18 @@
 
 #pragma once
 
-#include "cuda_util.cuh"
-#include "util.cuh"
+
+#include <morgen/utils/timing.cuh>
+#include <morgen/utils/list.cuh>
+#include <morgen/workset/hash.cuh>
+
 #include <cuda_runtime_api.h>
 
 #define INF -1
 
+namespace morgen {
+
+namespace bfs {
 
 template<typename VertexId, typename SizeT, typename Value>
 __global__ void
@@ -94,10 +100,12 @@ BFSKernel(SizeT     *row_offsets,
 
 
 template<typename VertexId, typename SizeT, typename Value>
-void BFSGraph_gpu_hash(graph<VertexId, SizeT, Value> &g, VertexId source, int slots)
+void BFSGraph_gpu_hash(const graph::CsrGraph<VertexId, SizeT, Value> &g, VertexId source, int slots)
 {
 
-	if (slots > 0) printf("setting up slots = %d\n", slots);
+	if (slots > 0) {
+		printf("slots = %d\n", slots);
+	}
 	else {
 		printf("slots should be a positive number\n");
 		return;
@@ -106,17 +114,17 @@ void BFSGraph_gpu_hash(graph<VertexId, SizeT, Value> &g, VertexId source, int sl
 	// To make better use of the workset, we create two.
 	// Instead of creating a new one everytime in each BFS level,
 	// we just expand vertices from one to another
-    hashed<VertexId, SizeT> workset1(g.n, slots);
-    hashed<VertexId, SizeT> workset2(g.n, slots);
+    workset::NaiveHash<VertexId, SizeT> workset1(g.n, slots);
+    workset::NaiveHash<VertexId, SizeT> workset2(g.n, slots);
 
 
     // Initalize auxiliary list
-    list<Value, SizeT> levels(g.n);
+    util::List<Value, SizeT> levels(g.n);
     levels.all_to(INF);
 
 
     // visitation list: 0 for unvisited
-    list<int, SizeT> visited(g.n);
+    util::List<int, SizeT> visited(g.n);
     visited.all_to(0);
 
 
@@ -159,7 +167,7 @@ void BFSGraph_gpu_hash(graph<VertexId, SizeT, Value> &g, VertexId source, int sl
 
 
 		// kick off timer first
-		GpuTimer gpu_timer;
+		util::GpuTimer gpu_timer;
 		gpu_timer.start();
 
 		if (curLevel % 2 == 0) 
@@ -180,7 +188,7 @@ void BFSGraph_gpu_hash(graph<VertexId, SizeT, Value> &g, VertexId source, int sl
 				                               curLevel,     
 				                               visited.d_elems);
 
-			if (HandleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
+			if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
 
 			worksetSize = workset2.max_slot_size();
@@ -201,7 +209,7 @@ void BFSGraph_gpu_hash(graph<VertexId, SizeT, Value> &g, VertexId source, int sl
 				                               curLevel,     
 				                               visited.d_elems);
 
-			if (HandleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
+			if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
 		 	
 		 	worksetSize = workset1.max_slot_size();
@@ -235,3 +243,7 @@ void BFSGraph_gpu_hash(graph<VertexId, SizeT, Value> &g, VertexId source, int sl
 	workset2.del();
 	
 }
+
+
+} // BFS
+} // Morgen

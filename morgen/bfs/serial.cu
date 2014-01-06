@@ -18,11 +18,20 @@
 
 #pragma once
 
+
+#include <morgen/utils/timing.cuh>
+#include <morgen/utils/list.cuh>
+#include <morgen/workset/queue.cuh>
+
 #define INF -1
 
 
+
+namespace morgen {
+
+namespace bfs {
 /**  
- *  Serial BFS 
+ *  Serial BFS, written like GPU kernel
  */
 template<typename VertexId, typename SizeT, typename Value>
 void
@@ -63,25 +72,27 @@ BFSCore(SizeT     *row_offsets,
 
 
 template<typename VertexId, typename SizeT, typename Value>
-void BFSGraph_serial(graph<VertexId, SizeT, Value> &g, VertexId source, bool verbose = false)
+void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
+                     VertexId source,
+                     bool verbose = false)
 {
 
 	// To make better use of the workset, we create two.
 	// Instead of creating a new one everytime in each BFS level,
 	// we just expand vertices from one to another
-    queued<VertexId, SizeT> workset1(g.n);
-    queued<VertexId, SizeT> workset2(g.n);
+    workset::Queue<VertexId, SizeT> workset1(g.n);
+    workset::Queue<VertexId, SizeT> workset2(g.n);
 
 
 
 
     // Initalize auxiliary list
-    list<Value, SizeT> levels(g.n);
+    util::List<Value, SizeT> levels(g.n);
     levels.all_to(INF);
 
 
     // visitation list: 0 for unvisited
-    list<int, SizeT> visited(g.n);
+    util::List<int, SizeT> visited(g.n);
     visited.all_to(0);
 
 
@@ -103,7 +114,7 @@ void BFSGraph_serial(graph<VertexId, SizeT, Value> &g, VertexId source, bool ver
     while (worksetSize > 0) {
 
 
-    	CpuTimer timer;
+    	util::CpuTimer timer;
     	timer.start();
 
 		lastWorksetSize = worksetSize;
@@ -165,7 +176,7 @@ void BFSGraph_serial(graph<VertexId, SizeT, Value> &g, VertexId source, bool ver
 		timer.stop();
 
 		// do not print the timing infos when printing distribution
-		if (!verbose) printf("%d\t%d\t%f\n", curLevel, lastWorksetSize, timer.elapsedMillis());
+		if (!verbose) printf("%d\t%d\t%.12f\n", curLevel, lastWorksetSize, timer.elapsedMillis());
 		total_millis += timer.elapsedMillis();
 		curLevel += 1;
 	}
@@ -181,3 +192,6 @@ void BFSGraph_serial(graph<VertexId, SizeT, Value> &g, VertexId source, bool ver
 	workset2.del();
 
 }
+
+} // BFS
+} // Morgen

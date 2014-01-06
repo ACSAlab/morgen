@@ -19,11 +19,21 @@
 
 #pragma once
  
-#include "cuda_util.cuh"
-#include "util.cuh"
+
+#include <morgen/utils/timing.cuh>
+#include <morgen/utils/list.cuh>
+#include <morgen/utils/var.cuh>
+
+
 #include <cuda_runtime_api.h>
 
 #define INF -1
+
+
+
+namespace morgen {
+
+namespace bfs {
 
 /**
  * each thread wakeup and check if activated[tid] == 1
@@ -95,25 +105,25 @@ BFSKernel_update(SizeT     max_size,
 
 
 template<typename VertexId, typename SizeT, typename Value>
-void BFSGraph_gpu_bitmask(graph<VertexId, SizeT, Value> &g, VertexId source)
+void BFSGraph_gpu_bitmask(const graph::CsrGraph<VertexId, SizeT, Value> &g, VertexId source)
 {
 
 	// use a list to represent bitmask
-    list<int, SizeT> activated(g.n);
-    list<int, SizeT> update(g.n);
+    util::List<int, SizeT> activated(g.n);
+    util::List<int, SizeT> update(g.n);
     activated.all_to(0);
     update.all_to(0);
 
     // Initalize auxiliary list
-    list<Value, SizeT> levels(g.n);
+    util::List<Value, SizeT> levels(g.n);
     levels.all_to(INF);
 
     // visitation
-    list<int, SizeT> visited(g.n);
+    util::List<int, SizeT> visited(g.n);
     visited.all_to(0);
 
     // set up a flag, initially set
-    var<int> terminate;
+    util::Var<int> terminate;
     terminate.set(0);
 
 	// traverse from source node
@@ -144,7 +154,7 @@ void BFSGraph_gpu_bitmask(graph<VertexId, SizeT, Value> &g, VertexId source)
 		terminate.set(1);
 
 		// kick off timer first
-		GpuTimer gpu_timer;
+		util::GpuTimer gpu_timer;
 		gpu_timer.start();
 
 		BFSKernel_expand<<<blockNum, blockSize>>>(g.n,
@@ -154,7 +164,7 @@ void BFSGraph_gpu_bitmask(graph<VertexId, SizeT, Value> &g, VertexId source)
 				                                  levels.d_elems,             
 				                                  visited.d_elems,
 				                                  update.d_elems);
-		if (HandleError(cudaThreadSynchronize(), "BFSKernel_expand failed ", __FILE__, __LINE__)) break;
+		if (util::handleError(cudaThreadSynchronize(), "BFSKernel_expand failed ", __FILE__, __LINE__)) break;
 
 		BFSKernel_update<<<blockNum, blockSize>>>(g.n,
 											      g.d_row_offsets,
@@ -163,7 +173,7 @@ void BFSGraph_gpu_bitmask(graph<VertexId, SizeT, Value> &g, VertexId source)
 				                                  visited.d_elems,
 				                                  update.d_elems,     
 				                                  terminate.d_elem);
-		if (HandleError(cudaThreadSynchronize(), "BFSKernel_update failed ", __FILE__, __LINE__)) break;
+		if (util::handleError(cudaThreadSynchronize(), "BFSKernel_update failed ", __FILE__, __LINE__)) break;
 
 
 		 // timer end
@@ -190,3 +200,7 @@ void BFSGraph_gpu_bitmask(graph<VertexId, SizeT, Value> &g, VertexId source)
 	terminate.del();
 	
 }
+
+
+} // BFS
+} // Morgen
