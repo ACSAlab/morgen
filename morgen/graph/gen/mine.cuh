@@ -17,6 +17,9 @@
 
 #pragma once
 
+#include <time.h>
+
+
 #include <morgen/graph/graph.cuh>
 
 namespace morgen { 
@@ -27,8 +30,13 @@ namespace gen {
  * it take a pointer to the opened file
  */
 template<typename VertexId, typename SizeT, typename Value> 
-void myGraphGen(FILE *fp, CsrGraph<VertexId, SizeT, Value> &g)
+int myGraphGen(
+    FILE *fp,
+    CsrGraph<VertexId, SizeT, Value> &g)
 {
+    time_t mark0 = time(NULL);
+    printf("My graph gen...\n");
+
 	// read the number of nodes
 	SizeT  nodes; 
 	fscanf(fp, "%u", &nodes);
@@ -61,6 +69,10 @@ void myGraphGen(FILE *fp, CsrGraph<VertexId, SizeT, Value> &g)
     	g.costs[j] = cost;
     }
 
+    time_t mark1 = time(NULL);
+    printf("Done parsing (%ds).\n", (int) (mark1 - mark0));
+
+    return 0;
 }
 
 

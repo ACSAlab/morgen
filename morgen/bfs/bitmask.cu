@@ -1,4 +1,3 @@
-
 /*
  *   The breadth-first search algorithm
  *
@@ -180,13 +179,15 @@ void BFSGraph_gpu_bitmask(const graph::CsrGraph<VertexId, SizeT, Value> &g, Vert
 		 gpu_timer.stop();
 
 		 printf("%d\t%f\n", curLevel, gpu_timer.elapsedMillis());
+
 		 total_milllis += gpu_timer.elapsedMillis();
 
 		 curLevel += 1;
 
 	}
     
-    printf("gpu bitmasked bfs terminates\n");	
+    printf("gpu bitmasked bfs terminates\n");
+	
     float billion_edges_per_second = (float)g.m / total_milllis / 1000000.0;
     printf("time(s): %f   speed(BE/s): %f\n", total_milllis / 1000.0, billion_edges_per_second);
 

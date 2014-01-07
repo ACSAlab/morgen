@@ -1,4 +1,3 @@
-
 /*
  *   The breadth-first search algorithm
  *

@@ -67,7 +67,7 @@ struct CsrGraph {
 
     void init(SizeT nodes, SizeT edges) {
         initRow(nodes);
-        initColunm(edges); 
+        initColumn(edges); 
     }
 
     /**
@@ -144,7 +144,52 @@ struct CsrGraph {
         del();
     }
 
+    /**
+    template <typename Tuple>
+    void convertFromCoo(
+        Tuple *coo, 
+        SizeT coo_nodes, 
+        SizeT coo_edges,
+        bool ordered_rows = false)
+    {
+        printf("Converting %d vertices, %d directed edges (%s tuples) to CSR format... \n",
+            coo_nodes, coo_edges, ordered_rows ? "ordered" : "unordered");
 
+        init(coo_nodes, coo_edges);
+
+        // if unordered, sort it first
+        if (!ordered_rows) {
+            std::stable_sort(coo, coo + edges, tupleCompare<Tuple>);
+        }
+
+        VertexId prev_row = -1;
+
+        // iterate through the all the edges
+        for (SizeT edge = 0; edge < edges; edge++) {
+
+            VertexId current_row = coo[edge].row;
+
+            for (VertexId row = prev_row + 1; row <= current_row; row++) {
+                row_offsets[row] = edge;
+            }
+            prev_row = current_row;
+
+            column_indices[edge] = coo[edge].col;
+
+            // weight of edge
+            coo[edge].setVal(costs[edge]);
+            
+        }
+
+        for (VertexId row = prev_row + 1; row < nodes; row++) {
+            row_offsets[row] = edges;
+        }
+    }
+    */
+
+
+
+    
     /**
      * Display the infomation of the graph at the console
      */    

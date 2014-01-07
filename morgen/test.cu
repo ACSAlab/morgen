@@ -19,6 +19,7 @@
 
 #include <morgen/graph/graph.cuh>
 #include <morgen/graph/gen/mine.cuh>
+#include <morgen/graph/gen/dimacs.cuh>
 
 #include <morgen/bfs/bitmask.cu>
 #include <morgen/bfs/queue.cu>
@@ -32,7 +33,7 @@ using namespace morgen;
 
 
 void usage() {
-	printf("\ntest <graph file> <graph type> [bfs type] [--device=<device index>] "
+	printf("\ntest <graph> <bfs type> [--device=<device index>] "
 			"[--slots=<number of slots>] [--outdegree] [--distribution]"
 			"[--src=<source idx>]\n"
 			"\n"
@@ -48,57 +49,105 @@ int main(int argc, char **argv) {
 	typedef int SizeT;
 	typedef int Value;
 
-	graph::CsrGraph<VertexId, SizeT, Value> ga;
 
 
 	/*********************************************************************
 	 * Commandline parsing
 	 *********************************************************************/
 	util::CommandLineArgs args(argc, argv);
-	// 0: name   1: path   2:graph_type    3: bfs_type
-	if ((argc < 4) || args.CheckCmdLineFlag("help")) {
+	// 0: prog   1: graph    2: bfs_type
+	if ((argc < 3) || args.CheckCmdLineFlag("help")) {
 		usage();
 		return 1;
 	}
 
-	std::string graph_file_path = argv[1];
-	std::string graph_type = argv[2];
-	// if user only wants to inspect the graph, just skip this argument 
-	std::string bfs_type = argv[3];
+	std::string graph = argv[1];
+	std::string bfs_type = argv[2];
+
 
 	// --outdegree : print out degrees of the graph?
 	bool print_outdegree = args.CheckCmdLineFlag("outdegree");
+	printf("Print outdegree?   %s\n", (print_outdegree ? "Yes" : "No"));
 
 	// --distribution : print the edge distribution each level?
 	bool print_distribution = args.CheckCmdLineFlag("distribution");
+	printf("Print distribution?   %s\n", (print_distribution ? "Yes" : "No"));
 
 	// --source=<source node ID>
 	VertexId source = 0;
 	args.GetCmdLineArgument("source", source);
-	printf("traverse from %lld\n", source);
+	printf("Source node: %lld\n", source);
 
 	// --slots=<number of slots>
 	int slots = 0;
 	args.GetCmdLineArgument("slots", slots);
+	printf("Slot number: %d\n", slots);
+
+
+	graph::CsrGraph<VertexId, SizeT, Value> ga;
+
 
 	/*********************************************************************
 	 * Build the graph from a file
 	 *********************************************************************/
-	FILE *fp = fopen(graph_file_path.c_str(), "r");
-	if (!fp) {
-		fprintf(stderr, "cannot open file\n");
-		return 1;
-	}
-	
 
-	if (graph_type == "mine") {
-	
+
+	FILE *fp;
+	if (graph == "fla") {
+		fp = fopen(getenv("FLA_GRAPH"), "r");
+		if (!fp) {
+			fprintf(stderr, "cannot open file\n");
+			return 1;
+		}
 		graph::gen::myGraphGen<VertexId, SizeT, Value>(fp, ga);
+
+	} else if (graph == "mesh") {
 	
+		fp = fopen(getenv("MESH_GRAPH"), "r");
+		if (!fp) {
+			fprintf(stderr, "cannot open file\n");
+			return 1;
+		}
+		graph::gen::myGraphGen<VertexId, SizeT, Value>(fp, ga);
+
+	} else if (graph == "rmat") {
+	
+		fp = fopen(getenv("RMAT_GRAPH"), "r");
+		if (!fp) {
+			fprintf(stderr, "cannot open file\n");
+			return 1;
+		}
+		graph::gen::myGraphGen<VertexId, SizeT, Value>(fp, ga);
+
+	} else if (graph == "kkt") {
+
+		fp = fopen(getenv("KKT_GRAPH"), "r");
+		if (!fp) {
+			fprintf(stderr, "cannot open file\n");
+			return 1;
+		}
+		graph::gen::dimacsGraphGen<VertexId, SizeT, Value>(fp, ga);
+
+	} else if (graph == "copaper") {
+
+		fp = fopen(getenv("COPAPER_GRAPH"), "r");
+		if (!fp) {
+			fprintf(stderr, "cannot open file\n");
+			return 1;
+		}
+		graph::gen::dimacsGraphGen<VertexId, SizeT, Value>(fp, ga);
+
+	} else if (graph == "audi") {
+
+		fp = fopen(getenv("AUDI_GRAPH"), "r");
+		if (!fp) {
+			fprintf(stderr, "cannot open file\n");
+			return 1;
+		}
+		graph::gen::dimacsGraphGen<VertexId, SizeT, Value>(fp, ga);
 
 	} else {
-		fprintf(stderr, "no graph type is specified\n");
-		fclose(fp);
+		fprintf(stderr, "no graph is specified\n");
 		return 1;
 	}
 
@@ -132,7 +181,7 @@ int main(int argc, char **argv) {
 		bfs::BFSGraph_gpu_hash<VertexId, SizeT, Value>(ga, source, slots);
 
 	} else {
-		fprintf(stderr, "no traverse type is specified\n");
+		fprintf(stderr, "no traverse type is specified. exit quietly\n");
 	}
 
 
