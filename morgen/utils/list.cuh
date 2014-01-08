@@ -50,18 +50,6 @@ struct List
             exit(1);
 	}
 
-	void del() {
-		util::handleError(cudaFreeHost(elems), "List: cudaFreeHost(elems) failed",
-                           __FILE__, __LINE__);
-		elems = NULL;
-		d_elems = NULL;
-		n = 0;
-	}
-
-	~List() {
-		del();
-	}
-
 	// setting to some value on CPU serially
 	void all_to(Value x) {
 		for (int i = 0; i < n; i++) {
@@ -70,15 +58,34 @@ struct List
 	}
 
 	void print_log() {
+		int neg_count = 0;
+
 		FILE* log = fopen("log.txt", "w");
+
 		for (int i = 0; i < n; i++) {
+			if (elems[i]<0)  neg_count++; 
 			fprintf(log, "%lld\n", (long long)elems[i]);
 		}
 		fprintf(log, "\n");
+
+		printf("%d / %d is negative\n", neg_count, n);
+
 	}
 
 	void set(SizeT i, Value x) { elems[i] = x; }
 
+
+	void del() {
+		if (elems) {
+			util::handleError(cudaFreeHost(elems), "List: cudaFreeHost(elems) failed", __FILE__, __LINE__);
+			elems = NULL;
+		}
+		n = 0;
+	}
+
+	~List() {
+		del();
+	}
 };
 
 

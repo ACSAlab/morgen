@@ -37,20 +37,26 @@ namespace gen {
  * Loads a DIMACS-formatted CSR graph through the fp. 
  */
 template<typename VertexId, typename Value, typename SizeT>
-int dimacsGraphGen(FILE* fp, CsrGraph<VertexId, SizeT, Value> &csr_graph)
+int cooGraphGen(
+	FILE* fp,
+	CsrGraph<VertexId, SizeT, Value> &csr_graph)
 { 
+	typedef CooEdgeTuple<VertexId> EdgeTupleT;
 
 	time_t mark0 = time(NULL);
-	printf("Dimacs graph gen...\n");
+	printf("Coo graph gen...\n");
 
 	char        line[1024];          // remaind line buffer
-	char	    c;                   // read in char
-	SizeT	    edges_read = 0;      // how many edges in a row
-	VertexId    current_node = -1;   // current out node we are checking
-	long long   ll_edge;
+	char        c;
+	long long   ll_nodes, ll_edges;
+	long long   ll_node1, ll_node2;
+	SizeT       edges_read = -1;
+	EdgeTupleT  *coo;
 
 
-	// parse the metis file
+	ll_nodes = 0;
+	ll_edges = 0;
+
 	while ((c = fgetc(fp)) != EOF) {
 		switch (c) {
 
@@ -67,47 +73,45 @@ int dimacsGraphGen(FILE* fp, CsrGraph<VertexId, SizeT, Value> &csr_graph)
 			// white space
 			break;
 
-		case '\n':
-			// end of line: begin to process the next node
-			current_node++;
-			csr_graph.row_offsets[current_node] = edges_read;
-			break;
 
 		default:
 			// put the char back
 			ungetc(c, fp);
 
 			// read the first line(nodes/edges)
-			if (current_node == -1) {
-				long long ll_nodes, ll_edges;
-				fscanf(fp, "%lld %lld[^\n]", &ll_nodes, &ll_edges, line);
-				csr_graph.init(ll_nodes, ll_edges * 2);
-				printf("%d nodes, %d directed edges\n", csr_graph.n, csr_graph.m);
+			if (edges_read == -1) {
+				fscanf(fp, "%lld %lld", &ll_nodes, &ll_edges, line);
+				printf("%d nodes, %d edges\n", ll_nodes, ll_edges);
+				coo = (EdgeTupleT*) malloc(sizeof(EdgeTupleT) * ll_edges * 2);
+				edges_read++;
 			} else {
 				// process next edge in edge list
-				fscanf(fp, "%lld", &ll_edge);
-				csr_graph.column_indices[edges_read] = ll_edge - 1;
+				fscanf(fp, "%lld %lld", &ll_node1, &ll_node2, line);
+				coo[edges_read] = EdgeTupleT(ll_node1, ll_node2);
 				edges_read++;
 			}
 		} // end of switch
 	}
 
-	// Fill out any trailing rows that didn't have explicit lines in the file
-	while (current_node < csr_graph.n) {
-		current_node++;
-		csr_graph.row_offsets[current_node] = edges_read;
-	}
-
-	// whether read_edges == the claimed edge numbers
-	if (edges_read != csr_graph.m) {
-		fprintf(stderr, "Error: only %d edges read(should be %d)\n", edges_read, csr_graph.m);
-		csr_graph.del();
+	if (ll_nodes == 0 || ll_edges == 0) {
+		fprintf(stderr, "Error: nodes=%d edges=%d\n", ll_nodes, ll_edges);
 		return 1;
 	}
+
+	edges_read--;
+
+	// whether read_edges == the claimed edge numbers
+	if (edges_read != ll_edges) {
+		fprintf(stderr, "Error: only %d edges read(should be %d)\n", edges_read, ll_edges);
+		return 1;
+	}
+
+	csr_graph.initFromCoo(coo, ll_nodes, ll_edges);
 
 	time_t mark1 = time(NULL);
     printf("Done parsing (%ds).\n", (int) (mark1 - mark0));
 
+    if (coo) free(coo);
 	return 0;
 }
 

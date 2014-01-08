@@ -100,7 +100,11 @@ BFSKernel(SizeT     *row_offsets,
 
 
 template<typename VertexId, typename SizeT, typename Value>
-void BFSGraph_gpu_hash(const graph::CsrGraph<VertexId, SizeT, Value> &g, VertexId source, int slots)
+void BFSGraph_gpu_hash(
+	const graph::CsrGraph<VertexId, SizeT, Value> &g, 
+	VertexId source, 
+	int slots,
+	bool verbose = false)
 {
 
 	if (slots > 0) {
@@ -224,8 +228,7 @@ void BFSGraph_gpu_hash(const graph::CsrGraph<VertexId, SizeT, Value> &g, VertexI
 		 
 		 total_millis += gpu_timer.elapsedMillis();
 
-		 printf("%d\t%d\t%d\t%.3f\t%f\n", curLevel, lastWorksetSize, lastActualWorksetSize,
-		 	    mapping_efficiency, gpu_timer.elapsedMillis());
+		 if (verbose) printf("%d\t%d\t%d\t%.3f\t%f\n", curLevel, lastWorksetSize, lastActualWorksetSize, mapping_efficiency, gpu_timer.elapsedMillis());
 
 		 curLevel += 1;
 

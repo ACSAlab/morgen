@@ -19,7 +19,11 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
+#include <algorithm>
+
+#include <morgen/graph/coo_edge_tuple.cuh>
 #include <morgen/utils/cuda_util.cuh>
 #include <cuda_runtime_api.h>
 
@@ -35,6 +39,7 @@ namespace graph {
 /**************************************************************************
  * The graph is represented as CSR format and resides in the pinned memory
  * all edges in the graph are directed
+ * In this version(for bfs only), we do not consider the edge weight 
  **************************************************************************/
 template<typename VertexId, typename SizeT, typename Value>
 struct CsrGraph {
@@ -47,21 +52,18 @@ struct CsrGraph {
      */
     SizeT     *row_offsets;
     VertexId  *column_indices;   // SOA instead of AOS 
-    Value     *costs;
 
     /**
      * Device pointers
      */
     SizeT     *d_row_offsets;
     VertexId  *d_column_indices;
-    Value     *d_costs;
 
 
     /**
      * Default constructor(do not allocate memory since the n/m is unknown)
      */
-    CsrGraph() : n(0), m(0), row_offsets(NULL), column_indices(NULL), costs(NULL),
-              d_row_offsets(NULL), d_column_indices(NULL), d_costs(NULL) {}
+    CsrGraph() : n(0), m(0), row_offsets(NULL), column_indices(NULL), d_row_offsets(NULL), d_column_indices(NULL) {}
 
 
 
@@ -82,13 +84,11 @@ struct CsrGraph {
 
         int flags = cudaHostAllocMapped;
         if (util::handleError(cudaHostAlloc((void **) &row_offsets, sizeof(SizeT) * (n + 1), flags),
-                               "CsrGraph: cudaHostAlloc(row_offsets) failed", __FILE__, __LINE__)) 
-            exit(1);
+                               "CsrGraph: cudaHostAlloc(row_offsets) failed", __FILE__, __LINE__)) exit(1);
 
         // Get the device pointer
         if (util::handleError(cudaHostGetDevicePointer((void **) &d_row_offsets, (void *) row_offsets, 0),
-                               "CsrGraph: cudaHostGetDevicePointer(d_row_offsets) failed", __FILE__, __LINE__)) 
-            exit(1);
+                               "CsrGraph: cudaHostGetDevicePointer(d_row_offsets) failed", __FILE__, __LINE__)) exit(1);
     }
 
     /**
@@ -100,93 +100,63 @@ struct CsrGraph {
         // Allocated in the pinned memory
         int flags = cudaHostAllocMapped;
         if (util::handleError(cudaHostAlloc((void **) &column_indices, sizeof(VertexId) * m, flags),
-                               "CsrGraph: cudaHostAlloc(column_indices) failed", __FILE__, __LINE__)) 
-            exit(1);
-        if (util::handleError(cudaHostAlloc((void **) &costs, sizeof(Value) * m, flags),
-                               "CsrGraph: cudaHostAlloc(costs) failed", __FILE__, __LINE__)) 
-            exit(1);
+                               "CsrGraph: cudaHostAlloc(column_indices) failed", __FILE__, __LINE__)) exit(1);
         
         // Get the device pointer
         if (util::handleError(cudaHostGetDevicePointer((void **) &d_column_indices, (void *) column_indices, 0),
-                               "CsrGraph: cudaHostGetDevicePointer(d_column_indices) failed", __FILE__, __LINE__)) 
-            exit(1);
+                               "CsrGraph: cudaHostGetDevicePointer(d_column_indices) failed", __FILE__, __LINE__)) exit(1);
                    
-        if (util::handleError(cudaHostGetDevicePointer((void **) &d_costs, (void *) costs, 0),
-                               "CsrGraph: cudaHostGetDevicePointer(d_costs) failed", __FILE__, __LINE__)) 
-            exit(1);
     }
 
 
-    /**
-     * Delete the graph 
-     */
-    void del() { 
-        
-        util::handleError(cudaFreeHost(row_offsets), "CsrGraph: cudaFreeHost(row_offsets) failed",
-                           __FILE__, __LINE__);
-        util::handleError(cudaFreeHost(column_indices), "CsrGraph: cudaFreeHost(column_indices) failed",
-                           __FILE__, __LINE__);
-        util::handleError(cudaFreeHost(costs), "CsrGraph: cudaFreeHost(costs) failed",
-                           __FILE__, __LINE__);
-        
-        n = 0;
-        m = 0;
-        row_offsets      = NULL;
-        column_indices   = NULL;
-        costs            = NULL;
-        d_row_offsets    = NULL;
-        d_column_indices = NULL;
-        d_costs          = NULL;
-      }
-
-
-    ~CsrGraph() {
-        del();
-    }
-
-    /**
-    template <typename Tuple>
-    void convertFromCoo(
-        Tuple *coo, 
+    
+    void initFromCoo(
+        CooEdgeTuple<VertexId> *coo, 
         SizeT coo_nodes, 
         SizeT coo_edges,
         bool ordered_rows = false)
     {
         printf("Converting %d vertices, %d directed edges (%s tuples) to CSR format... \n",
             coo_nodes, coo_edges, ordered_rows ? "ordered" : "unordered");
+        
+        time_t mark1 = time(NULL);
 
         init(coo_nodes, coo_edges);
 
+
+        typedef CooEdgeTuple<VertexId> tupleT;
         // if unordered, sort it first
         if (!ordered_rows) {
-            std::stable_sort(coo, coo + edges, tupleCompare<Tuple>);
+            std::stable_sort(coo, coo + m, tupleCompare<tupleT>);
         }
 
         VertexId prev_row = -1;
-
-        // iterate through the all the edges
-        for (SizeT edge = 0; edge < edges; edge++) {
+        // iterate through the all the edges(m == coo_edges)
+        for (SizeT edge = 0; edge < m; edge++) {
 
             VertexId current_row = coo[edge].row;
 
+            // Fill up the missing rows
             for (VertexId row = prev_row + 1; row <= current_row; row++) {
                 row_offsets[row] = edge;
             }
+
             prev_row = current_row;
 
+            // It is a one-to-to map between ordered COO and CSR
             column_indices[edge] = coo[edge].col;
 
-            // weight of edge
-            coo[edge].setVal(costs[edge]);
-            
         }
 
-        for (VertexId row = prev_row + 1; row < nodes; row++) {
-            row_offsets[row] = edges;
+        // Fill out any trailing rows that didn't have explicit lines in the file
+
+        for (VertexId row = prev_row + 1; row < n; row++) {
+            row_offsets[row] = m;
         }
+        time_t mark2 = time(NULL);
+        printf("Done converting (%ds).\n", (int) (mark2 - mark1));
     }
-    */
-
+    
 
 
     
@@ -204,7 +174,7 @@ struct CsrGraph {
             for (SizeT j = row_offsets[i]; j < row_offsets[i+1]; j++) {
                 printf(" ");
                 printf("%lld", (long long)column_indices[j]);
-                printf("(%lld)", (long long)costs[j]);                
+                //printf("(%lld)", (long long)costs[j]);              
             }
             printf("\n");
         }
@@ -241,6 +211,33 @@ struct CsrGraph {
                    (float) log_counts[i+1] * 100.0 / n);
         }
 
+    }
+
+
+    /**
+     * Delete the graph 
+     */
+    void del() { 
+        
+        if (row_offsets) {
+            util::handleError(cudaFreeHost(row_offsets), "CsrGraph: cudaFreeHost(row_offsets) failed", __FILE__, __LINE__);
+            row_offsets = NULL;
+
+        }
+
+        if (column_indices) {
+            util::handleError(cudaFreeHost(column_indices), "CsrGraph: cudaFreeHost(column_indices) failed", __FILE__, __LINE__);
+            column_indices   = NULL;
+        }
+        
+        n = 0;
+        m = 0;
+
+      }
+
+
+    ~CsrGraph() {
+        del();
     }
 };
 

@@ -110,20 +110,25 @@ struct NaiveHash {
     }
 
     void del() {
-        util::handleError(cudaFreeHost(elems), "NaiveHash: cudaFreeHost(elems) failed", __FILE__, __LINE__);
-        util::handleError(cudaFreeHost(slot_sizes), "NaiveHash: cudaFreeHost(slot_sizes) failed", __FILE__, __LINE__);
-        util::handleError(cudaFreeHost(slot_offsets), "NaiveHash: cudaFreeHost(slot_offsets) failed", __FILE__, __LINE__);
+        if (elems) {
+            util::handleError(cudaFreeHost(elems), "NaiveHash: cudaFreeHost(elems) failed", __FILE__, __LINE__);
+            elems = NULL;
+        }
+
+        if (slot_sizes) {
+            util::handleError(cudaFreeHost(slot_sizes), "NaiveHash: cudaFreeHost(slot_sizes) failed", __FILE__, __LINE__);
+            slot_sizes = NULL;     
+        }
+
+        if (slot_offsets) {
+            util::handleError(cudaFreeHost(slot_offsets), "NaiveHash: cudaFreeHost(slot_offsets) failed", __FILE__, __LINE__);
+            slot_offsets = NULL;
+        }
         
         n = 0;
         slot_num = 0;
         each_slot_size = 0;
         
-        elems = NULL;
-        slot_sizes = NULL;     
-        slot_offsets = NULL;  
-        d_elems = NULL;
-        d_slot_sizes = NULL;     
-        d_slot_offsets = NULL; 
     }
 
     ~NaiveHash() {

@@ -58,10 +58,11 @@ struct Var {
     }
 
     void del() {
-        util::handleError(cudaFreeHost(elem), "var: cudaFreeHost(elem) failed",
-                           __FILE__, __LINE__);
-        elem = NULL;
-        d_elem = NULL;
+        if (elem) {
+            util::handleError(cudaFreeHost(elem), "var: cudaFreeHost(elem) failed", __FILE__, __LINE__);
+            elem = NULL;
+        }
+
     }
 
     ~Var() {

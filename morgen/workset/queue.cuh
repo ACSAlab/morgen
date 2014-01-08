@@ -90,15 +90,20 @@ struct Queue {
     }
 
     void del() {
-        util::handleError(cudaFreeHost(elems), "Queue: cudaFreeHost(elems) failed",
-                           __FILE__, __LINE__);
-        util::handleError(cudaFreeHost(sizep), "Queue: cudaFreeHost(sizep) failed",
-                           __FILE__, __LINE__);
+        
+        if (elems) {
+            util::handleError(cudaFreeHost(elems), "Queue: cudaFreeHost(elems) failed", __FILE__, __LINE__);
+            elems = NULL;
+
+        }
+
+        if (sizep) {
+            util::handleError(cudaFreeHost(sizep), "Queue: cudaFreeHost(sizep) failed", __FILE__, __LINE__);
+            sizep = NULL;
+        }
+
         n = 0;
-        sizep = NULL;
-        d_sizep = NULL;
-        elems = NULL;
-        d_elems = NULL;
+
     }
 
 

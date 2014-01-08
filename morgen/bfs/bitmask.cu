@@ -104,7 +104,10 @@ BFSKernel_update(SizeT     max_size,
 
 
 template<typename VertexId, typename SizeT, typename Value>
-void BFSGraph_gpu_bitmask(const graph::CsrGraph<VertexId, SizeT, Value> &g, VertexId source)
+void BFSGraph_gpu_bitmask(
+	const graph::CsrGraph<VertexId, SizeT, Value> &g,
+	VertexId source,
+	bool verbose = false)
 {
 
 	// use a list to represent bitmask
@@ -178,7 +181,7 @@ void BFSGraph_gpu_bitmask(const graph::CsrGraph<VertexId, SizeT, Value> &g, Vert
 		 // timer end
 		 gpu_timer.stop();
 
-		 printf("%d\t%f\n", curLevel, gpu_timer.elapsedMillis());
+		 if (verbose) printf("%d\t%f\n", curLevel, gpu_timer.elapsedMillis());
 
 		 total_milllis += gpu_timer.elapsedMillis();
 

@@ -8,4 +8,5 @@ export KKT_GRAPH="/home/chengyichao/food/kkt_power"
 export COPAPER_GRAPH="/home/chengyichao/food/coPapers"
 export AUDI_GRAPH="/home/chengyichao/food/audikw1"
 export RMAT_GRAPH="/home/chengyichao/food/rmat.5Mv.60Me"
+export AMAZON_GRAPH="/home/chengyichao/food/amazon"
 

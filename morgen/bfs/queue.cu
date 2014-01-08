@@ -78,7 +78,10 @@ BFSKernel(SizeT     *row_offsets,
 
 
 template<typename VertexId, typename SizeT, typename Value>
-void BFSGraph_gpu_queue(const graph::CsrGraph<VertexId, SizeT, Value> &g, VertexId source)
+void BFSGraph_gpu_queue(
+	const graph::CsrGraph<VertexId, SizeT, Value> &g,
+	VertexId source,
+	bool verbose = false)
 {
 
 	// To make better use of the workset, we create two.
@@ -172,7 +175,9 @@ void BFSGraph_gpu_queue(const graph::CsrGraph<VertexId, SizeT, Value> &g, Vertex
 
 		 // timer end
 		 gpu_timer.stop();
-		 printf("%d\t%d\t%f\n", curLevel, lastWorksetSize, gpu_timer.elapsedMillis());
+
+		 if (verbose) printf("%d\t%d\t%f\n", curLevel, lastWorksetSize, gpu_timer.elapsedMillis());
+		 
 		 total_milllis += gpu_timer.elapsedMillis();
 		 curLevel += 1;
 

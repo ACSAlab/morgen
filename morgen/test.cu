@@ -17,19 +17,17 @@
 
 
 
-#include <morgen/graph/graph.cuh>
+#include <morgen/graph/csr_graph.cuh>
 #include <morgen/graph/gen/mine.cuh>
 #include <morgen/graph/gen/dimacs.cuh>
-
+#include <morgen/graph/gen/coo.cuh>
 #include <morgen/bfs/bitmask.cu>
 #include <morgen/bfs/queue.cu>
 #include <morgen/bfs/hash.cu>
 #include <morgen/bfs/serial.cu>
-
 #include <morgen/utils/command_line.cuh>
 
 using namespace morgen;
-
 
 
 void usage() {
@@ -40,6 +38,13 @@ void usage() {
 			"\n");
 }
 
+
+void check_open(FILE *fp, char *filename) {
+	if (!fp) {
+		fprintf(stderr, "cannot open file: %s\n", filename);
+		exit(1);
+	}
+}
 
 
 int main(int argc, char **argv) {
@@ -64,6 +69,9 @@ int main(int argc, char **argv) {
 	std::string graph = argv[1];
 	std::string bfs_type = argv[2];
 
+	printf("================================================================\n");
+	printf("Graph: %s\n", graph.c_str());
+
 
 	// --outdegree : print out degrees of the graph?
 	bool print_outdegree = args.CheckCmdLineFlag("outdegree");
@@ -72,6 +80,10 @@ int main(int argc, char **argv) {
 	// --distribution : print the edge distribution each level?
 	bool print_distribution = args.CheckCmdLineFlag("distribution");
 	printf("Print distribution?   %s\n", (print_distribution ? "Yes" : "No"));
+
+	// --instrument : whether instrument each frontier
+	bool instrument = args.CheckCmdLineFlag("instrument");
+	printf("Instrument?   %s\n", (print_distribution ? "Yes" : "No"));
 
 	// --source=<source node ID>
 	VertexId source = 0;
@@ -90,61 +102,47 @@ int main(int argc, char **argv) {
 	/*********************************************************************
 	 * Build the graph from a file
 	 *********************************************************************/
-
-
 	FILE *fp;
 	if (graph == "fla") {
 		fp = fopen(getenv("FLA_GRAPH"), "r");
-		if (!fp) {
-			fprintf(stderr, "cannot open file\n");
-			return 1;
-		}
-		graph::gen::myGraphGen<VertexId, SizeT, Value>(fp, ga);
+		check_open(fp, "fla");
+		if (graph::gen::myGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
 
 	} else if (graph == "mesh") {
 	
 		fp = fopen(getenv("MESH_GRAPH"), "r");
-		if (!fp) {
-			fprintf(stderr, "cannot open file\n");
-			return 1;
-		}
-		graph::gen::myGraphGen<VertexId, SizeT, Value>(fp, ga);
+		check_open(fp, "mesh");
+		if (graph::gen::myGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
 
 	} else if (graph == "rmat") {
 	
 		fp = fopen(getenv("RMAT_GRAPH"), "r");
-		if (!fp) {
-			fprintf(stderr, "cannot open file\n");
-			return 1;
-		}
-		graph::gen::myGraphGen<VertexId, SizeT, Value>(fp, ga);
+		check_open(fp, "rmat");
+		if (graph::gen::myGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
 
 	} else if (graph == "kkt") {
 
 		fp = fopen(getenv("KKT_GRAPH"), "r");
-		if (!fp) {
-			fprintf(stderr, "cannot open file\n");
-			return 1;
-		}
-		graph::gen::dimacsGraphGen<VertexId, SizeT, Value>(fp, ga);
+		check_open(fp, "kkt");
+		if (graph::gen::dimacsGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
 
 	} else if (graph == "copaper") {
 
 		fp = fopen(getenv("COPAPER_GRAPH"), "r");
-		if (!fp) {
-			fprintf(stderr, "cannot open file\n");
-			return 1;
-		}
-		graph::gen::dimacsGraphGen<VertexId, SizeT, Value>(fp, ga);
+		check_open(fp, "copaper");
+		if (graph::gen::dimacsGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
 
 	} else if (graph == "audi") {
 
 		fp = fopen(getenv("AUDI_GRAPH"), "r");
-		if (!fp) {
-			fprintf(stderr, "cannot open file\n");
-			return 1;
-		}
-		graph::gen::dimacsGraphGen<VertexId, SizeT, Value>(fp, ga);
+		check_open(fp, "audi");
+		if (graph::gen::dimacsGraphGen<VertexId, SizeT, Value>(fp, ga) !=0 ) return 1;
+
+	} else if (graph == "amazon") {
+
+		fp = fopen(getenv("AMAZON_GRAPH"), "r");
+		check_open(fp, "amazon");
+		if (graph::gen::cooGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
 
 	} else {
 		fprintf(stderr, "no graph is specified\n");
@@ -170,15 +168,15 @@ int main(int argc, char **argv) {
 
 	} else if (bfs_type == "bitmask") {
 
-		bfs::BFSGraph_gpu_bitmask<VertexId, SizeT, Value>(ga, source);
+		bfs::BFSGraph_gpu_bitmask<VertexId, SizeT, Value>(ga, source, instrument);
 
 	} else if (bfs_type == "queue") {
 
-		bfs::BFSGraph_gpu_queue<VertexId, SizeT, Value>(ga, source);
+		bfs::BFSGraph_gpu_queue<VertexId, SizeT, Value>(ga, source, instrument);
 
 	} else if (bfs_type == "hash") {
 
-		bfs::BFSGraph_gpu_hash<VertexId, SizeT, Value>(ga, source, slots);
+		bfs::BFSGraph_gpu_hash<VertexId, SizeT, Value>(ga, source, slots, instrument);
 
 	} else {
 		fprintf(stderr, "no traverse type is specified. exit quietly\n");

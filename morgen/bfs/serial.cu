@@ -68,12 +68,15 @@ BFSCore(SizeT     *row_offsets,
 	}
 }
 
-
-
+/**
+ * Serial BFS is also used to inspect the workload distribution
+ * within the froniter.
+ * In this case, just set shutup = true
+ */
 template<typename VertexId, typename SizeT, typename Value>
 void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
                      VertexId source,
-                     bool verbose = false)
+                     bool shutup = false)
 {
 
 	// To make better use of the workset, we create two.
@@ -100,6 +103,7 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
     visited.set(source, 1);
     SizeT worksetSize = 1;
     SizeT lastWorksetSize = 1;
+    SizeT visitedNodes = 0;
 	Value curLevel = 0;
 
 
@@ -133,7 +137,7 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
 			worksetSize = workset2.size();
 
 			// traverse workset set, and query the edge number, then print it
-			if (verbose) {
+			if (shutup) {
 				for (int i = 0; i < *workset2.sizep; i++) {
 					VertexId outNode = workset2.elems[i];
 					SizeT outEdgeFirst = g.row_offsets[outNode];
@@ -159,7 +163,7 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
 			worksetSize = workset1.size();
 
 			// traverse workset set, and query the edge number, then print it
-			if (verbose) {
+			if (shutup) {
 				for (int i = 0; i < *workset1.sizep; i++) {
 					VertexId outNode = workset1.elems[i];
 					SizeT outEdgeFirst = g.row_offsets[outNode];
@@ -175,14 +179,18 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
 		timer.stop();
 
 		// do not print the timing infos when printing distribution
-		if (!verbose) printf("%d\t%d\t%.12f\n", curLevel, lastWorksetSize, timer.elapsedMillis());
+		if (!shutup) printf("%d\t%d\t%.12f\n", curLevel, lastWorksetSize, timer.elapsedMillis());
 		total_millis += timer.elapsedMillis();
 		curLevel += 1;
+		visitedNodes += lastWorksetSize;
 	}
 
 	printf("serial bfs terminates\n");	
 	float billion_edges_per_second = (float)g.m / total_millis / 1000000.0;
     printf("time(s): %f   speed(BE/s): %f\n", total_millis / 1000.0, billion_edges_per_second);
+
+    printf("%d nodes has been visited\n", visitedNodes);
+
 	levels.print_log();
 
     levels.del();

@@ -20,7 +20,7 @@
 #include <time.h>
 
 
-#include <morgen/graph/graph.cuh>
+#include <morgen/graph/csr_graph.cuh>
 
 namespace morgen { 
 namespace graph {
@@ -38,14 +38,14 @@ int myGraphGen(
     printf("My graph gen...\n");
 
 	// read the number of nodes
-	SizeT  nodes; 
-	fscanf(fp, "%u", &nodes);
-	g.initRow(nodes);   
+	long long ll_nodes; 
+	fscanf(fp, "%lld", &ll_nodes);
+	g.initRow(ll_nodes);   
 
-	SizeT  start, width;
+	long long start, width;
 	int i;	
     for (i=0; i<g.n; i++) {
-    	fscanf(fp, "%u %u", &start, &width);
+    	fscanf(fp, "%lld %lld", &start, &width);
     	g.row_offsets[i] = start;
     }
 
@@ -57,16 +57,15 @@ int myGraphGen(
     fscanf(fp, "%u", &source);
 
     // read the number of edges
-    SizeT  edges;
-    fscanf(fp, "%u", &edges);
-	g.initColumn(edges);
+    long long  ll_edges;
+    fscanf(fp, "%u", &ll_edges);
+	g.initColumn(ll_edges);
 
-    VertexId  dest;
-    Value     cost;
+    long long  dest, cost;
     for (int j=0; j<g.m; j++) {
-    	fscanf(fp, "%u %u", &dest, &cost);
+    	fscanf(fp, "%lld %lld", &dest, &cost);
     	g.column_indices[j] = dest;
-    	g.costs[j] = cost;
+    	//g.costs[j] = cost;
     }
 
     time_t mark1 = time(NULL);
