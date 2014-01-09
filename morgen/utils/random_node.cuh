@@ -28,30 +28,30 @@ namespace util {
 template <typename K>
 void randomBits(K &key, int entropy_reduction = 0, int lower_key_bits = sizeof(K) * 8)
 {
-	const unsigned int NUM_UCHARS = (sizeof(K) + sizeof(unsigned char) - 1) / sizeof(unsigned char);
-	unsigned char key_bits[NUM_UCHARS];
-	
+    const unsigned int NUM_UCHARS = (sizeof(K) + sizeof(unsigned char) - 1) / sizeof(unsigned char);
+    unsigned char key_bits[NUM_UCHARS];
+    
 
-	do {
-	
-		for (int j = 0; j < NUM_UCHARS; j++) {
-			unsigned char quarterword = 0xff;
-			for (int i = 0; i <= entropy_reduction; i++) {
-				quarterword &= (rand() >> 7);
-			}
-			key_bits[j] = quarterword;
-		}
-		
-		if (lower_key_bits < sizeof(K) * 8) {
-			unsigned long long base = 0;
-			memcpy(&base, key_bits, sizeof(K));
-			base &= (1 << lower_key_bits) - 1;
-			memcpy(key_bits, &base, sizeof(K));
-		}
-		
-		memcpy(&key, key_bits, sizeof(K));
-		
-	} while (key != key);		// avoids NaNs when generating random floating point numbers 
+    do {
+    
+        for (int j = 0; j < NUM_UCHARS; j++) {
+            unsigned char quarterword = 0xff;
+            for (int i = 0; i <= entropy_reduction; i++) {
+                quarterword &= (rand() >> 7);
+            }
+            key_bits[j] = quarterword;
+        }
+        
+        if (lower_key_bits < sizeof(K) * 8) {
+            unsigned long long base = 0;
+            memcpy(&base, key_bits, sizeof(K));
+            base &= (1 << lower_key_bits) - 1;
+            memcpy(key_bits, &base, sizeof(K));
+        }
+        
+        memcpy(&key, key_bits, sizeof(K));
+        
+    } while (key != key);       // avoids NaNs when generating random floating point numbers 
 }
 
 template<typename SizeT>

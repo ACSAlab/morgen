@@ -39,7 +39,7 @@ BFSKernel(SizeT     *row_offsets,
           VertexId  *workset_from,
           SizeT     slot_num_from,
           SizeT     *slot_offsets_from,
-          SizeT	    *slot_sizes_from,
+          SizeT     *slot_sizes_from,
           SizeT     *workset_to,
           SizeT     slot_num_to,
           SizeT     *slot_offsets_to,
@@ -48,76 +48,76 @@ BFSKernel(SizeT     *row_offsets,
           Value     curLevel,
           int       *visited)
 {
-	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-	// Initially, clean the workset to empty(each slot counter = 0)
-	if (tid < slot_num_to) {
-		slot_sizes_to[tid] = 0;
-	}
+    // Initially, clean the workset to empty(each slot counter = 0)
+    if (tid < slot_num_to) {
+        slot_sizes_to[tid] = 0;
+    }
 
-	__syncthreads();
+    __syncthreads();
 
 
 
-	// tid  0 1 2 3 4 5  <- accord threads num with the logical size   
-	//  0   a b c d e f
-	//  1   g h i j
-	//  2   k l m n o
- 	//  3   p q
+    // tid  0 1 2 3 4 5  <- accord threads num with the logical size   
+    //  0   a b c d e f
+    //  1   g h i j
+    //  2   k l m n o
+    //  3   p q
 
-	for (int i = 0; i < slot_num_from; i++) {
+    for (int i = 0; i < slot_num_from; i++) {
 
-		if (tid < slot_sizes_from[i]) {
+        if (tid < slot_sizes_from[i]) {
 
-			VertexId outNode = workset_from[slot_offsets_from[i] + tid];
-			levels[outNode] = curLevel;
+            VertexId outNode = workset_from[slot_offsets_from[i] + tid];
+            levels[outNode] = curLevel;
 
-			SizeT outEdgeFirst = row_offsets[outNode];
-			SizeT outEdgeLast = row_offsets[outNode+1];
+            SizeT outEdgeFirst = row_offsets[outNode];
+            SizeT outEdgeLast = row_offsets[outNode+1];
 
-			// serial expansion
-			for (SizeT edge = outEdgeFirst; edge < outEdgeLast; edge++) {
+            // serial expansion
+            for (SizeT edge = outEdgeFirst; edge < outEdgeLast; edge++) {
 
-				VertexId inNode = column_indices[edge];
+                VertexId inNode = column_indices[edge];
 
-				// resolve concurrent discovery through atomical operations
-				int old = atomicExch( (int*)&visited[inNode], 1 );
+                // resolve concurrent discovery through atomical operations
+                int old = atomicExch( (int*)&visited[inNode], 1 );
 
-				if (old == 0) {	
+                if (old == 0) { 
 
-					// hash the pos by inNode id
-					int hash = inNode % slot_num_to;
+                    // hash the pos by inNode id
+                    int hash = inNode % slot_num_to;
 
-					// exclusively get the writing position within the slot
-					SizeT pos= atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
-					workset_to[slot_offsets_to[hash] + pos] = inNode;
-				}
-			}	
-		}
-	}	
+                    // exclusively get the writing position within the slot
+                    SizeT pos= atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
+                    workset_to[slot_offsets_to[hash] + pos] = inNode;
+                }
+            }   
+        }
+    }   
 
 }
 
 
 template<typename VertexId, typename SizeT, typename Value>
 void BFSGraph_gpu_hash(
-	const graph::CsrGraph<VertexId, SizeT, Value> &g, 
-	VertexId source, 
-	int slots,
-	bool verbose = false)
+    const graph::CsrGraph<VertexId, SizeT, Value> &g, 
+    VertexId source, 
+    int slots,
+    bool verbose = false)
 {
 
-	if (slots > 0) {
-		printf("slots = %d\n", slots);
-	}
-	else {
-		printf("slots should be a positive number\n");
-		return;
-	}
+    if (slots > 0) {
+        printf("slots = %d\n", slots);
+    }
+    else {
+        printf("slots should be a positive number\n");
+        return;
+    }
 
-	// To make better use of the workset, we create two.
-	// Instead of creating a new one everytime in each BFS level,
-	// we just expand vertices from one to another
+    // To make better use of the workset, we create two.
+    // Instead of creating a new one everytime in each BFS level,
+    // we just expand vertices from one to another
     workset::NaiveHash<VertexId, SizeT> workset1(g.n, slots);
     workset::NaiveHash<VertexId, SizeT> workset2(g.n, slots);
 
@@ -132,7 +132,7 @@ void BFSGraph_gpu_hash(
     visited.all_to(0);
 
 
-	// traverse from source node
+    // traverse from source node
     workset1.insert(source);   
     levels.set(source, 0);
     visited.set(source, 1);
@@ -142,100 +142,100 @@ void BFSGraph_gpu_hash(
     SizeT actualWorksetSize = 1; 
     SizeT lastActualWorksetSize = 0;
 
-	Value curLevel = 0;
+    Value curLevel = 0;
 
-	// kernel configuration
-	int blockNum = 16;
-	int blockSize = 256;
-
-
-	printf("gpu hashed bfs starts... \n");	
-	
-
-	if (verbose)
-		printf("level\t"
-			   "slot_size\t"
-			   "frontier_size\t"
-			   "ratio\t"
-			   "time\n");
-
-	float total_millis = 0.0;
-
-	while (worksetSize > 0) {
-
-		lastWorksetSize = worksetSize;
-		lastActualWorksetSize = actualWorksetSize;
-
-		// In hashed version,  the worksetSize is the logical size
-		// of the hash table(smallest among the slot sizes)
-		blockNum = (worksetSize % blockSize == 0 ? 
-			worksetSize / blockSize :
-			worksetSize / blockSize + 1);
+    // kernel configuration
+    int blockNum = 16;
+    int blockSize = 256;
 
 
-		// kick off timer first
-		util::GpuTimer gpu_timer;
-		gpu_timer.start();
+    printf("gpu hashed bfs starts... \n");  
+    
 
-		if (curLevel % 2 == 0) 
-		{
+    if (verbose)
+        printf("level\t"
+               "slot_size\t"
+               "frontier_size\t"
+               "ratio\t"
+               "time\n");
 
-			// call kernel with device pointers
-			BFSKernel<<<blockNum, blockSize>>>(g.d_row_offsets,
-				                               g.d_column_indices,
-				                               workset1.d_elems,
-				                               workset1.slot_num,
-				                               workset1.d_slot_offsets,
-				                               workset1.d_slot_sizes,		                             
-				                               workset2.d_elems,
-				                               workset2.slot_num,
-				                               workset2.d_slot_offsets,
-				                               workset2.d_slot_sizes,
-				                               levels.d_elems,
-				                               curLevel,     
-				                               visited.d_elems);
+    float total_millis = 0.0;
 
-			if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
+    while (worksetSize > 0) {
+
+        lastWorksetSize = worksetSize;
+        lastActualWorksetSize = actualWorksetSize;
+
+        // In hashed version,  the worksetSize is the logical size
+        // of the hash table(smallest among the slot sizes)
+        blockNum = (worksetSize % blockSize == 0 ? 
+            worksetSize / blockSize :
+            worksetSize / blockSize + 1);
 
 
-			worksetSize = workset2.max_slot_size();
-			actualWorksetSize = workset2.sum_slot_size();
-		 } else {
+        // kick off timer first
+        util::GpuTimer gpu_timer;
+        gpu_timer.start();
 
-			BFSKernel<<<blockNum, blockSize>>>(g.d_row_offsets,
-				                               g.d_column_indices,
-				                               workset2.d_elems,
-				                               workset2.slot_num,
-				                               workset2.d_slot_offsets,
-				                               workset2.d_slot_sizes,		                             
-				                               workset1.d_elems,
-				                               workset1.slot_num,
-				                               workset1.d_slot_offsets,
-				                               workset1.d_slot_sizes,
-				                               levels.d_elems,
-				                               curLevel,     
-				                               visited.d_elems);
+        if (curLevel % 2 == 0) 
+        {
 
-			if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
+            // call kernel with device pointers
+            BFSKernel<<<blockNum, blockSize>>>(g.d_row_offsets,
+                                               g.d_column_indices,
+                                               workset1.d_elems,
+                                               workset1.slot_num,
+                                               workset1.d_slot_offsets,
+                                               workset1.d_slot_sizes,                                    
+                                               workset2.d_elems,
+                                               workset2.slot_num,
+                                               workset2.d_slot_offsets,
+                                               workset2.d_slot_sizes,
+                                               levels.d_elems,
+                                               curLevel,     
+                                               visited.d_elems);
 
-		 	
-		 	worksetSize = workset1.max_slot_size();
-			actualWorksetSize = workset1.sum_slot_size();
+            if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
-		 }
 
-		 // timer end
-		 gpu_timer.stop();
+            worksetSize = workset2.max_slot_size();
+            actualWorksetSize = workset2.sum_slot_size();
+         } else {
 
-		 float mapping_efficiency = (float) lastActualWorksetSize / (lastWorksetSize * slots);
-		 
-		 total_millis += gpu_timer.elapsedMillis();
+            BFSKernel<<<blockNum, blockSize>>>(g.d_row_offsets,
+                                               g.d_column_indices,
+                                               workset2.d_elems,
+                                               workset2.slot_num,
+                                               workset2.d_slot_offsets,
+                                               workset2.d_slot_sizes,                                    
+                                               workset1.d_elems,
+                                               workset1.slot_num,
+                                               workset1.d_slot_offsets,
+                                               workset1.d_slot_sizes,
+                                               levels.d_elems,
+                                               curLevel,     
+                                               visited.d_elems);
 
-		 if (verbose) printf("%d\t%d\t%d\t%.3f\t%f\n", curLevel, lastWorksetSize, lastActualWorksetSize, mapping_efficiency, gpu_timer.elapsedMillis());
+            if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
-		 curLevel += 1;
+            
+            worksetSize = workset1.max_slot_size();
+            actualWorksetSize = workset1.sum_slot_size();
 
-	}
+         }
+
+         // timer end
+         gpu_timer.stop();
+
+         float mapping_efficiency = (float) lastActualWorksetSize / (lastWorksetSize * slots);
+         
+         total_millis += gpu_timer.elapsedMillis();
+
+         if (verbose) printf("%d\t%d\t%d\t%.3f\t%f\n", curLevel, lastWorksetSize, lastActualWorksetSize, mapping_efficiency, gpu_timer.elapsedMillis());
+
+         curLevel += 1;
+
+    }
     
     printf("gpu hashed bfs terminates\n");
     float billion_edges_per_second = (float)g.m / total_millis / 1000000.0;
@@ -246,8 +246,8 @@ void BFSGraph_gpu_hash(
     levels.del();
     visited.del();
     workset1.del();
-	workset2.del();
-	
+    workset2.del();
+    
 }
 
 

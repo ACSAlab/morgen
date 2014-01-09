@@ -50,11 +50,11 @@ struct Var {
     }
 
     Value getVal() {
-    	return *elem;
+        return *elem;
     }
 
     void set(Value v) {
-    	*elem = v;
+        *elem = v;
     }
 
     void del() {

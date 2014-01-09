@@ -35,7 +35,7 @@ struct NaiveHash {
     SizeT   n;                // size in all
     SizeT   each_slot_size;
 
-    Value  	*elems;
+    Value   *elems;
     SizeT   *slot_sizes;      //the logical size will be changed on gpu 
     SizeT   *slot_offsets;    
 
@@ -51,26 +51,26 @@ struct NaiveHash {
 
         // e.g. 7 elements will fit into 4 slots
         // each slots has 2 elements
-    	each_slot_size = _n / slot_num + 1;
-    	n = each_slot_size * slot_num;
+        each_slot_size = _n / slot_num + 1;
+        n = each_slot_size * slot_num;
 
         // Pinned and mapped in memory
         int flags = cudaHostAllocMapped;
 
         for (int i = 0; i < slot_num; i++) {
-        	if (util::handleError(cudaHostAlloc((void **)&slot_sizes, sizeof(SizeT) * slot_num, flags),
-          	                "NaiveHash: cudaHostAlloc(elems) failed", __FILE__, __LINE__)) exit(1);
-        	if (util::handleError(cudaHostAlloc((void **)&slot_offsets, sizeof(SizeT) * slot_num, flags),
+            if (util::handleError(cudaHostAlloc((void **)&slot_sizes, sizeof(SizeT) * slot_num, flags),
+                            "NaiveHash: cudaHostAlloc(elems) failed", __FILE__, __LINE__)) exit(1);
+            if (util::handleError(cudaHostAlloc((void **)&slot_offsets, sizeof(SizeT) * slot_num, flags),
                             "NaiveHash: cudaHostAlloc(sizep) failed", __FILE__, __LINE__)) exit(1);
-        	if (util::handleError(cudaHostAlloc((void **)&elems, sizeof(SizeT) * n, flags),
+            if (util::handleError(cudaHostAlloc((void **)&elems, sizeof(SizeT) * n, flags),
                             "NaiveHash: cudaHostAlloc(sizep) failed", __FILE__, __LINE__)) exit(1);
-    	}
+        }
 
-    	// initalize
-    	for (int i = 0; i < slot_num; i++) {
-    		slot_sizes[i] = 0;
-    		slot_offsets[i] = i * each_slot_size;
-    	}
+        // initalize
+        for (int i = 0; i < slot_num; i++) {
+            slot_sizes[i] = 0;
+            slot_offsets[i] = i * each_slot_size;
+        }
 
         // Get the device pointer
         if (util::handleError(cudaHostGetDevicePointer((void **) &d_elems, (void *) elems, 0),
@@ -82,31 +82,31 @@ struct NaiveHash {
     }
 
 
-	// insert on cpu end
+    // insert on cpu end
     int insert(Value key) {
-    	SizeT hash = key % slot_num;
-    	slot_sizes[hash] += 1;  // increase before writing
-    	SizeT pos = slot_offsets[hash] + slot_sizes[hash];
-    	elems[pos] = key;
-    	return 0;  // succeed
+        SizeT hash = key % slot_num;
+        slot_sizes[hash] += 1;  // increase before writing
+        SizeT pos = slot_offsets[hash] + slot_sizes[hash];
+        elems[pos] = key;
+        return 0;  // succeed
     }
 
     // get the largest slot in the hash table
     int max_slot_size() {
-    	SizeT  logical_size = 0;
-    	for (int i = 0 ; i < slot_num; i++) {
-    		logical_size = MORGEN_MAX(logical_size, slot_sizes[i]);
-    	}
-    	return logical_size;
+        SizeT  logical_size = 0;
+        for (int i = 0 ; i < slot_num; i++) {
+            logical_size = MORGEN_MAX(logical_size, slot_sizes[i]);
+        }
+        return logical_size;
     }
 
     // sum each slot size up
     int sum_slot_size() {
-    	SizeT  logical_size = 0;
-    	for (int i = 0 ; i < slot_num; i++) {
-    		logical_size += slot_sizes[i];
-    	}
-    	return logical_size;
+        SizeT  logical_size = 0;
+        for (int i = 0 ; i < slot_num; i++) {
+            logical_size += slot_sizes[i];
+        }
+        return logical_size;
     }
 
     void del() {

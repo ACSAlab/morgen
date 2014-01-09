@@ -38,75 +38,75 @@ namespace gen {
  */
 template<typename VertexId, typename Value, typename SizeT>
 int cooGraphGen(
-	FILE* fp,
-	CsrGraph<VertexId, SizeT, Value> &csr_graph)
+    FILE* fp,
+    CsrGraph<VertexId, SizeT, Value> &csr_graph)
 { 
-	typedef CooEdgeTuple<VertexId> EdgeTupleT;
+    typedef CooEdgeTuple<VertexId> EdgeTupleT;
 
-	time_t mark0 = time(NULL);
-	printf("Coo graph gen...\n");
+    time_t mark0 = time(NULL);
+    printf("Coo graph gen...\n");
 
-	char        line[1024];          // remaind line buffer
-	char        c;
-	long long   ll_nodes, ll_edges;
-	long long   ll_node1, ll_node2;
-	SizeT       edges_read = -1;
-	EdgeTupleT  *coo;
-
-
-	ll_nodes = 0;
-	ll_edges = 0;
-
-	while ((c = fgetc(fp)) != EOF) {
-		switch (c) {
-
-		
-
-		case ' ':
-		case '\t':
-			// white space
-			break;
+    char        line[1024];          // remaind line buffer
+    char        c;
+    long long   ll_nodes, ll_edges;
+    long long   ll_node1, ll_node2;
+    SizeT       edges_read = -1;
+    EdgeTupleT  *coo;
 
 
-		default:
-			// put the char back
-			ungetc(c, fp);
+    ll_nodes = 0;
+    ll_edges = 0;
 
-			// read the first line(nodes/edges)
-			if (edges_read == -1) {
-				fscanf(fp, "%lld %lld", &ll_nodes, &ll_edges, line);
-				printf("%d nodes, %d edges\n", ll_nodes, ll_edges);
-				coo = (EdgeTupleT*) malloc(sizeof(EdgeTupleT) * ll_edges * 2);
-				edges_read++;
-			} else {
-				// process next edge in edge list
-				fscanf(fp, "%lld %lld", &ll_node1, &ll_node2, line);
-				coo[edges_read] = EdgeTupleT(ll_node1, ll_node2);
-				edges_read++;
-			}
-		} // end of switch
-	}
+    while ((c = fgetc(fp)) != EOF) {
+        switch (c) {
 
-	if (ll_nodes == 0 || ll_edges == 0) {
-		fprintf(stderr, "Error: nodes=%d edges=%d\n", ll_nodes, ll_edges);
-		return 1;
-	}
+        
 
-	edges_read--;
+        case ' ':
+        case '\t':
+            // white space
+            break;
 
-	// whether read_edges == the claimed edge numbers
-	if (edges_read != ll_edges) {
-		fprintf(stderr, "Error: only %d edges read(should be %d)\n", edges_read, ll_edges);
-		return 1;
-	}
 
-	csr_graph.initFromCoo(coo, ll_nodes, ll_edges);
+        default:
+            // put the char back
+            ungetc(c, fp);
 
-	time_t mark1 = time(NULL);
+            // read the first line(nodes/edges)
+            if (edges_read == -1) {
+                fscanf(fp, "%lld %lld", &ll_nodes, &ll_edges, line);
+                printf("%d nodes, %d edges\n", ll_nodes, ll_edges);
+                coo = (EdgeTupleT*) malloc(sizeof(EdgeTupleT) * ll_edges * 2);
+                edges_read++;
+            } else {
+                // process next edge in edge list
+                fscanf(fp, "%lld %lld", &ll_node1, &ll_node2, line);
+                coo[edges_read] = EdgeTupleT(ll_node1, ll_node2);
+                edges_read++;
+            }
+        } // end of switch
+    }
+
+    if (ll_nodes == 0 || ll_edges == 0) {
+        fprintf(stderr, "Error: nodes=%d edges=%d\n", ll_nodes, ll_edges);
+        return 1;
+    }
+
+    edges_read--;
+
+    // whether read_edges == the claimed edge numbers
+    if (edges_read != ll_edges) {
+        fprintf(stderr, "Error: only %d edges read(should be %d)\n", edges_read, ll_edges);
+        return 1;
+    }
+
+    csr_graph.initFromCoo(coo, ll_nodes, ll_edges);
+
+    time_t mark1 = time(NULL);
     printf("Done parsing (%ds).\n", (int) (mark1 - mark0));
 
     if (coo) free(coo);
-	return 0;
+    return 0;
 }
 
 } // namespace gem

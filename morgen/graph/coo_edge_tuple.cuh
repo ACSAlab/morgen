@@ -27,10 +27,10 @@ namespace graph {
 template<typename VertexId>
 struct CooEdgeTuple
 {
-	VertexId  row;
- 	VertexId  col;
+    VertexId  row;
+    VertexId  col;
 
- 	CooEdgeTuple(VertexId row, VertexId col) : row(row), col(col) {}
+    CooEdgeTuple(VertexId row, VertexId col) : row(row), col(col) {}
 };
 
 
@@ -41,10 +41,10 @@ struct CooEdgeTuple
 template<typename tupleT>
 bool tupleCompare(tupleT elem1, tupleT elem2)
 {
-	if (elem1.row < elem2.row)
-		return true;
-	else
-		return false;
+    if (elem1.row < elem2.row)
+        return true;
+    else
+        return false;
 
 }
 

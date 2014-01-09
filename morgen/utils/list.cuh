@@ -30,62 +30,62 @@
 template<typename Value, typename SizeT>
 struct List
 {
-	SizeT   n;
-	Value   *elems;
-	Value   *d_elems;
+    SizeT   n;
+    Value   *elems;
+    Value   *d_elems;
 
-	List() : n(0), elems(NULL), d_elems(NULL) {}
+    List() : n(0), elems(NULL), d_elems(NULL) {}
 
-	List(SizeT _n) {
+    List(SizeT _n) {
 
-		n = _n;
+        n = _n;
 
-		// mapped & pinned
-		int flags = cudaHostAllocMapped;
+        // mapped & pinned
+        int flags = cudaHostAllocMapped;
         if (util::handleError(cudaHostAlloc((void **)&elems, sizeof(Value) * n, flags),
                                "List: cudaHostAlloc(elems) failed", __FILE__, __LINE__)) 
-        	exit(1);
+            exit(1);
         if (util::handleError(cudaHostGetDevicePointer((void **) &d_elems, (void *) elems, 0),
                                 "List: cudaHostGetDevicePointer(d_elems) failed", __FILE__, __LINE__))
             exit(1);
-	}
+    }
 
-	// setting to some value on CPU serially
-	void all_to(Value x) {
-		for (int i = 0; i < n; i++) {
-			elems[i] = x;
-		}
-	}
+    // setting to some value on CPU serially
+    void all_to(Value x) {
+        for (int i = 0; i < n; i++) {
+            elems[i] = x;
+        }
+    }
 
-	void print_log() {
-		int neg_count = 0;
+    void print_log() {
+        int neg_count = 0;
 
-		FILE* log = fopen("log.txt", "w");
+        FILE* log = fopen("log.txt", "w");
 
-		for (int i = 0; i < n; i++) {
-			if (elems[i]<0)  neg_count++; 
-			fprintf(log, "%lld\n", (long long)elems[i]);
-		}
-		fprintf(log, "\n");
+        for (int i = 0; i < n; i++) {
+            if (elems[i]<0)  neg_count++; 
+            fprintf(log, "%lld\n", (long long)elems[i]);
+        }
+        fprintf(log, "\n");
 
-		printf("%.2f%% is negative\n", (float) neg_count / n * 100.0);
+        printf("%.2f%% is negative\n", (float) neg_count / n * 100.0);
 
-	}
+    }
 
-	void set(SizeT i, Value x) { elems[i] = x; }
+    void set(SizeT i, Value x) { elems[i] = x; }
 
 
-	void del() {
-		if (elems) {
-			util::handleError(cudaFreeHost(elems), "List: cudaFreeHost(elems) failed", __FILE__, __LINE__);
-			elems = NULL;
-		}
-		n = 0;
-	}
+    void del() {
+        if (elems) {
+            util::handleError(cudaFreeHost(elems), "List: cudaFreeHost(elems) failed", __FILE__, __LINE__);
+            elems = NULL;
+        }
+        n = 0;
+    }
 
-	~List() {
-		del();
-	}
+    ~List() {
+        del();
+    }
 };
 
 

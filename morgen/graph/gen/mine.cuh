@@ -37,16 +37,16 @@ int myGraphGen(
     time_t mark0 = time(NULL);
     printf("My graph gen...\n");
 
-	// read the number of nodes
-	long long ll_nodes; 
-	fscanf(fp, "%lld", &ll_nodes);
-	g.initRow(ll_nodes);   
+    // read the number of nodes
+    long long ll_nodes; 
+    fscanf(fp, "%lld", &ll_nodes);
+    g.initRow(ll_nodes);   
 
-	long long start, width;
-	int i;	
+    long long start, width;
+    int i;  
     for (i=0; i<g.n; i++) {
-    	fscanf(fp, "%lld %lld", &start, &width);
-    	g.row_offsets[i] = start;
+        fscanf(fp, "%lld %lld", &start, &width);
+        g.row_offsets[i] = start;
     }
 
     // util here, you get the complete CSR represenation!
@@ -59,13 +59,13 @@ int myGraphGen(
     // read the number of edges
     long long  ll_edges;
     fscanf(fp, "%u", &ll_edges);
-	g.initColumn(ll_edges);
+    g.initColumn(ll_edges);
 
     long long  dest, cost;
     for (int j=0; j<g.m; j++) {
-    	fscanf(fp, "%lld %lld", &dest, &cost);
-    	g.column_indices[j] = dest;
-    	//g.costs[j] = cost;
+        fscanf(fp, "%lld %lld", &dest, &cost);
+        g.column_indices[j] = dest;
+        //g.costs[j] = cost;
     }
 
     time_t mark1 = time(NULL);

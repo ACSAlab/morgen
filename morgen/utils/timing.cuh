@@ -30,63 +30,63 @@ namespace util {
 
 struct CpuTimer
 {
-	rusage _start;
-	rusage _stop;
+    rusage _start;
+    rusage _stop;
 
-	void start()
-	{
-		getrusage(RUSAGE_SELF, &_start);
-	}
+    void start()
+    {
+        getrusage(RUSAGE_SELF, &_start);
+    }
 
-	void stop()
-	{
-		getrusage(RUSAGE_SELF, &_stop);
-	}
+    void stop()
+    {
+        getrusage(RUSAGE_SELF, &_stop);
+    }
 
-	float elapsedMillis()
-	{
-		float sec = _stop.ru_utime.tv_sec - _start.ru_utime.tv_sec;
-		float usec = _stop.ru_utime.tv_usec - _start.ru_utime.tv_usec;
+    float elapsedMillis()
+    {
+        float sec = _stop.ru_utime.tv_sec - _start.ru_utime.tv_sec;
+        float usec = _stop.ru_utime.tv_usec - _start.ru_utime.tv_usec;
 
-		return (sec * 1000.0) + (usec / 1000.0);
-	}
+        return (sec * 1000.0) + (usec / 1000.0);
+    }
 
 };
 
 struct GpuTimer
 {
-	cudaEvent_t _start;
-	cudaEvent_t _stop;
+    cudaEvent_t _start;
+    cudaEvent_t _stop;
 
-	GpuTimer()
-	{
-		cudaEventCreate(&_start);
-		cudaEventCreate(&_stop);
-	}
+    GpuTimer()
+    {
+        cudaEventCreate(&_start);
+        cudaEventCreate(&_stop);
+    }
 
-	~GpuTimer()
-	{
-		cudaEventDestroy(_start);
-		cudaEventDestroy(_stop);
-	}
+    ~GpuTimer()
+    {
+        cudaEventDestroy(_start);
+        cudaEventDestroy(_stop);
+    }
 
-	void start()
-	{
-		cudaEventRecord(_start, 0);
-	}
+    void start()
+    {
+        cudaEventRecord(_start, 0);
+    }
 
-	void stop()
-	{
-		cudaEventRecord(_stop, 0);
-	}
+    void stop()
+    {
+        cudaEventRecord(_stop, 0);
+    }
 
-	float elapsedMillis()
-	{
-		float elapsed;
-		cudaEventSynchronize(_stop);
-		cudaEventElapsedTime(&elapsed, _start, _stop);
-		return elapsed;
-	}
+    float elapsedMillis()
+    {
+        float elapsed;
+        cudaEventSynchronize(_stop);
+        cudaEventElapsedTime(&elapsed, _start, _stop);
+        return elapsed;
+    }
 };
 
 } // Utils
