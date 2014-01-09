@@ -17,7 +17,6 @@
 
 #pragma once
 
-
 namespace morgen {
 
 namespace util {
@@ -32,6 +31,7 @@ void randomBits(K &key, int entropy_reduction = 0, int lower_key_bits = sizeof(K
 	const unsigned int NUM_UCHARS = (sizeof(K) + sizeof(unsigned char) - 1) / sizeof(unsigned char);
 	unsigned char key_bits[NUM_UCHARS];
 	
+
 	do {
 	
 		for (int j = 0; j < NUM_UCHARS; j++) {

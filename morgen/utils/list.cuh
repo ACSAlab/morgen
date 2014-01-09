@@ -68,7 +68,7 @@ struct List
 		}
 		fprintf(log, "\n");
 
-		printf("%d / %d is negative\n", neg_count, n);
+		printf("%.2f%% is negative\n", (float) neg_count / n * 100.0);
 
 	}
 

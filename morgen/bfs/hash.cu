@@ -149,12 +149,15 @@ void BFSGraph_gpu_hash(
 	int blockSize = 256;
 
 
-	printf("gpu hashed bfs starts\n");	
-	printf("level\t"
-		   "slot_size\t"
-		   "frontier_size\t"
-		   "ratio\t"
-		   "time\n");
+	printf("gpu hashed bfs starts... \n");	
+	
+
+	if (verbose)
+		printf("level\t"
+			   "slot_size\t"
+			   "frontier_size\t"
+			   "ratio\t"
+			   "time\n");
 
 	float total_millis = 0.0;
 

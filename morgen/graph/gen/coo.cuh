@@ -60,12 +60,6 @@ int cooGraphGen(
 	while ((c = fgetc(fp)) != EOF) {
 		switch (c) {
 
-		case '%':
-			// comment: skip any char encountered until see a '\n'
-			while((c = fgetc(fp)) != EOF) {
-				if (c == '\n') break; 
-			}
-			break;
 		
 
 		case ' ':

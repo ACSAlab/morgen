@@ -142,9 +142,9 @@ void BFSGraph_gpu_bitmask(
 		g.n / blockSize :
 		g.n / blockSize + 1);
 
-	printf("gpu bitmasked bfs starts\n");	
-	printf("level\t"
-		   "time\n");
+	printf("gpu bitmasked bfs starts... \n");	
+
+	if (verbose) printf("level\ttime\n");
 
 	float total_milllis = 0.0;
 

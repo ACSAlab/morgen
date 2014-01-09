@@ -71,12 +71,12 @@ BFSCore(SizeT     *row_offsets,
 /**
  * Serial BFS is also used to inspect the workload distribution
  * within the froniter.
- * In this case, just set shutup = true
  */
 template<typename VertexId, typename SizeT, typename Value>
 void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
                      VertexId source,
-                     bool shutup = false)
+                     bool instrument,
+                     bool distribution)
 {
 
 	// To make better use of the workset, we create two.
@@ -107,10 +107,9 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
 	Value curLevel = 0;
 
 
-    printf("serial bfs starts\n");	
-	printf("level\t"
-		   "frontier_size\t"
-		   "time\n");
+    printf("serial bfs starts... \n");	
+    if (!instrument)
+    	printf("level\tfrontier_size\ttime\n");
 
     float total_millis = 0.0;
 
@@ -137,7 +136,7 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
 			worksetSize = workset2.size();
 
 			// traverse workset set, and query the edge number, then print it
-			if (shutup) {
+			if (distribution) {
 				for (int i = 0; i < *workset2.sizep; i++) {
 					VertexId outNode = workset2.elems[i];
 					SizeT outEdgeFirst = g.row_offsets[outNode];
@@ -163,7 +162,7 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
 			worksetSize = workset1.size();
 
 			// traverse workset set, and query the edge number, then print it
-			if (shutup) {
+			if (distribution) {
 				for (int i = 0; i < *workset1.sizep; i++) {
 					VertexId outNode = workset1.elems[i];
 					SizeT outEdgeFirst = g.row_offsets[outNode];
@@ -179,7 +178,7 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
 		timer.stop();
 
 		// do not print the timing infos when printing distribution
-		if (!shutup) printf("%d\t%d\t%.12f\n", curLevel, lastWorksetSize, timer.elapsedMillis());
+		if (instrument) printf("%d\t%d\t%.12f\n", curLevel, lastWorksetSize, timer.elapsedMillis());
 		total_millis += timer.elapsedMillis();
 		curLevel += 1;
 		visitedNodes += lastWorksetSize;
