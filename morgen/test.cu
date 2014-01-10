@@ -33,8 +33,9 @@ using namespace morgen;
 
 void usage() {
     printf("\ntest <graph> <bfs type> [--device=<device index>] "
-            "[--slots=<number of slots>] [--outdegree] [--distribution]"
-            "[--src=<source idx>] [--instrument] [--random_source]\n"
+            "[--slots=<number of slots>] [--outdegree] [--distribution] [--workset]"
+            "[--src=<source idx>] [--instrument] [--random_source] "
+            "\n"
             "\n"
             "<graph>\n"
             "  tiny: tiny graph for debugging\n"
@@ -90,20 +91,24 @@ int main(int argc, char **argv) {
 
 
     // --outdegree : print out degrees of the graph?
-    bool print_outdegree = args.CheckCmdLineFlag("outdegree");
-    printf("Print outdegree?   %s\n", (print_outdegree ? "Yes" : "No"));
+    bool display_outdegree = args.CheckCmdLineFlag("outdegree");
+    printf("Display outdegree?   %s\n", (display_outdegree ? "Yes" : "No"));
 
     // --distribution : print the edge distribution each level?
-    bool print_distribution = args.CheckCmdLineFlag("distribution");
-    printf("Print distribution?   %s\n", (print_distribution ? "Yes" : "No"));
+    bool display_distribution = args.CheckCmdLineFlag("distribution");
+    printf("Display distribution?   %s\n", (display_distribution ? "Yes" : "No"));
 
-    // --distribution : print the edge distribution each level?
+    // --workset :
+    bool display_workset = args.CheckCmdLineFlag("workset");
+    printf("Display workset?   %s\n", (display_workset ? "Yes" : "No"));
+
+    // --warp_map :
     bool warp_mapped = args.CheckCmdLineFlag("warp_map");
     printf("Warp Mapping?   %s\n", (warp_mapped ? "Yes" : "No"));
 
     // --instrument : whether instrument each frontier
     bool instrument = args.CheckCmdLineFlag("instrument");
-    printf("Instrument?   %s\n", (print_distribution ? "Yes" : "No"));
+    printf("Instrument?   %s\n", (instrument ? "Yes" : "No"));
 
     // --instrument : whether instrument each frontier
     bool random_source = args.CheckCmdLineFlag("random_source");
@@ -123,7 +128,6 @@ int main(int argc, char **argv) {
     int block_size = 256;
     args.GetCmdLineArgument("block_size", block_size);
     printf("BLock size: %d (thread)\n", block_size);
-
 
     graph::CsrGraph<VertexId, SizeT, Value> ga;
 
@@ -223,14 +227,15 @@ int main(int argc, char **argv) {
     // Graph Information display(not verbose)
     ga.printInfo(false); 
 
-    if (print_outdegree) 
+    if (display_outdegree) 
         ga.printOutDegrees();
 
-    if (print_distribution) 
+    if (display_distribution || display_workset) 
         bfs::BFSGraph_serial<VertexId, SizeT, Value>(ga,
                                                      source, 
                                                      instrument, 
-                                                     print_distribution);
+                                                     display_distribution,
+                                                     display_workset);
 
 
     /*********************************************************************
@@ -250,7 +255,8 @@ int main(int argc, char **argv) {
         bfs::BFSGraph_serial<VertexId, SizeT, Value>(ga, 
                                                      source,
                                                      instrument,
-                                                     print_distribution);
+                                                     display_distribution,
+                                                     display_workset);
 
     } else if (bfs_type == "bitmask") {
 
@@ -260,11 +266,12 @@ int main(int argc, char **argv) {
 
     } else if (bfs_type == "queue") {
 
-        bfs::BFSGraph_gpu_queue<VertexId, SizeT, Value>(ga,
-                                                        source,
-                                                        instrument,
-                                                        block_size,
-                                                        warp_mapped);
+        bfs::BFSGraph_gpu_queue<VertexId, SizeT, Value>(
+            ga,                                            
+            source,
+            instrument,
+            block_size,
+            warp_mapped);
 
     } else if (bfs_type == "hash") {
 

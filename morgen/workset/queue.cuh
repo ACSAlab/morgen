@@ -84,10 +84,11 @@ struct Queue {
 
     void print() {
         for (int i = 0; i < *sizep; i++) {
-            printf("%lld\n", (long long)elems[i]);
+            printf("%lld\t", (long long)elems[i]);
         }
         printf("\n");
     }
+
 
     void del() {
         

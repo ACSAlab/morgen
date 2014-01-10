@@ -76,7 +76,8 @@ template<typename VertexId, typename SizeT, typename Value>
 void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
                      VertexId source,
                      bool instrument,
-                     bool distribution)
+                     bool display_distribution,
+                     bool display_workset)
 {
 
     // To make better use of the workset, we create two.
@@ -84,8 +85,6 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
     // we just expand vertices from one to another
     workset::Queue<VertexId, SizeT> workset1(g.n);
     workset::Queue<VertexId, SizeT> workset2(g.n);
-
-
 
 
     // Initalize auxiliary list
@@ -136,7 +135,7 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
             worksetSize = workset2.size();
 
             // traverse workset set, and query the edge number, then print it
-            if (distribution) {
+            if (display_distribution) {
                 for (int i = 0; i < *workset2.sizep; i++) {
                     VertexId outNode = workset2.elems[i];
                     SizeT outEdgeFirst = g.row_offsets[outNode];
@@ -146,6 +145,11 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
                 }
                 printf("\n");
             }
+
+            if (display_workset) {
+                workset2.print();
+            }
+
 
         } else {
 
@@ -162,7 +166,7 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
             worksetSize = workset1.size();
 
             // traverse workset set, and query the edge number, then print it
-            if (distribution) {
+            if (display_distribution) {
                 for (int i = 0; i < *workset1.sizep; i++) {
                     VertexId outNode = workset1.elems[i];
                     SizeT outEdgeFirst = g.row_offsets[outNode];
@@ -171,6 +175,10 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
                     printf("%d\t", edges);
                 }
                 printf("\n");
+            }
+
+            if (display_workset) {
+                workset1.print();
             }
 
         }

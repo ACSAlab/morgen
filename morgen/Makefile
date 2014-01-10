@@ -64,8 +64,8 @@ NVCCFLAFS = -Xptxas -v -Xcudafe
 test: bin/test
 
 bin/test : test.cu
-    mkdir -p bin
-    $(NVCC) $(SM_TARGETS) -o bin/test test.cu $(NVCCFLAGS) $(INC) -O3
+	mkdir -p bin
+	$(NVCC) $(SM_TARGETS) -o bin/test test.cu $(NVCCFLAGS) $(INC) -O3
 
 
 
@@ -73,8 +73,8 @@ bin/test : test.cu
 # Clean
 #-------------------------------------------------------------------------------
 clean :
-    rm -f bin/*
-    rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
+	rm -f bin/*
+	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 
 
