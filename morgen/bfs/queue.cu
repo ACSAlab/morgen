@@ -123,24 +123,30 @@ BFSKernel_warp_mapped(SizeT     *row_offsets,
     // amount(neigbors) that belongs to that group
     // groups/block = thread per block / group size
     // The size is allocated dynamically
-    volatile __shared__ SizeT edge_first[64];
-    volatile __shared__ SizeT edge_last[64];
+    volatile __shared__ SizeT edge_first[256];
+    volatile __shared__ SizeT edge_last[256];
 
 
-    if (group_id < *sizeFrom) {
+    // Since the workset can easily exceed 65536, we just let grouped-threads
+    // iterate over a large workset
+    for (int g = group_id; g < *sizeFrom; g += group_per_block * gridDim.x) {
+
+        //if (g % 1024 == 0 && group_offset == 0)
+        //    printf("I am group %d, size: %d, my next: %d\n", g, *sizeFrom, g+group_per_block * gridDim.x);
+
 
         // First thread in the group do this job read out info 
         // from global mem to local mem
         if (group_offset == 0) {
-            VertexId outNode = worksetFrom[group_id];
+
+            VertexId outNode = worksetFrom[g];
             levels[outNode] = curLevel;
             edge_first[group_id % group_per_block] = row_offsets[outNode];
             edge_last[group_id % group_per_block] = row_offsets[outNode+1];
         }
 
         __syncthreads();
-
-        
+    
         // in case the neighbor number > warp size
         for (SizeT edge = edge_first[group_id % group_per_block] + group_offset;
              edge < edge_last[group_id % group_per_block];
@@ -156,9 +162,11 @@ BFSKernel_warp_mapped(SizeT     *row_offsets,
                 SizeT pos= atomicAdd( (SizeT*) &(*sizeTo), 1 );
                 worksetTo[pos] = inNode;
             }
+
+
         }
 
-    
+
     }
 }
 
@@ -170,7 +178,8 @@ void BFSGraph_gpu_queue(
     VertexId source,
     bool instrument,
     int block_size,
-    bool warp_mapped)
+    bool warp_mapped,
+    int group_size)
 {
 
     // To make better use of the workset, we create two.
@@ -203,7 +212,6 @@ void BFSGraph_gpu_queue(
 
     // kernel configuration
     int blockNum = 16;
-    int group_size = 32;
 
     // how many threads are mapped to a single work set element
     int mapping_factor = (warp_mapped) ? group_size : 1; 
@@ -225,6 +233,8 @@ void BFSGraph_gpu_queue(
             worksetSize * mapping_factor / block_size :
             worksetSize * mapping_factor / block_size + 1);
 
+        // safe belt: grid width has a limit of 65535
+        if (blockNum > 65535) blockNum = 65535;
 
         // kick off timer first
         util::GpuTimer gpu_timer;

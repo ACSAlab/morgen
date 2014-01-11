@@ -27,6 +27,8 @@
 #include <morgen/bfs/serial.cu>
 #include <morgen/utils/command_line.cuh>
 #include <morgen/utils/random_node.cuh>
+#include <morgen/utils/utilizing_efficiency.cuh>
+
 
 using namespace morgen;
 
@@ -35,7 +37,7 @@ void usage() {
     printf("\ntest <graph> <bfs type> [--device=<device index>] "
             "[--slots=<number of slots>] [--outdegree] [--distribution] [--workset]"
             "[--src=<source idx>] [--instrument] [--random_source] "
-            "\n"
+            "[--group_size=<group size>]\n"
             "\n"
             "<graph>\n"
             "  tiny: tiny graph for debugging\n"
@@ -102,6 +104,10 @@ int main(int argc, char **argv) {
     bool display_workset = args.CheckCmdLineFlag("workset");
     printf("Display workset?   %s\n", (display_workset ? "Yes" : "No"));
 
+    // --metrics :
+    bool display_metrics = args.CheckCmdLineFlag("metrics");
+    printf("Display metrics?   %s\n", (display_metrics ? "Yes" : "No"));
+
     // --warp_map :
     bool warp_mapped = args.CheckCmdLineFlag("warp_map");
     printf("Warp Mapping?   %s\n", (warp_mapped ? "Yes" : "No"));
@@ -127,7 +133,12 @@ int main(int argc, char **argv) {
     // --block_size=<block size>
     int block_size = 256;
     args.GetCmdLineArgument("block_size", block_size);
-    printf("BLock size: %d (thread)\n", block_size);
+    printf("BLock size: %d (threads)\n", block_size);
+
+    int group_size = 32;
+    args.GetCmdLineArgument("group_size", group_size);
+    printf("Group size: %d (threads)\n", group_size);
+
 
     graph::CsrGraph<VertexId, SizeT, Value> ga;
 
@@ -224,6 +235,10 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    /*********************************************************************
+     * Display
+     *********************************************************************/
+
     // Graph Information display(not verbose)
     ga.printInfo(false); 
 
@@ -231,12 +246,16 @@ int main(int argc, char **argv) {
         ga.printOutDegrees();
 
     if (display_distribution || display_workset) 
-        bfs::BFSGraph_serial<VertexId, SizeT, Value>(ga,
-                                                     source, 
-                                                     instrument, 
-                                                     display_distribution,
-                                                     display_workset);
+        bfs::BFSGraph_serial<VertexId, SizeT, Value>(
+            ga,
+            source, 
+            instrument, 
+            display_distribution,
+            display_workset);
 
+
+    if (display_metrics)
+        util::displayUtilizingEfficiency(ga);
 
     /*********************************************************************
      * Traversing
@@ -252,17 +271,19 @@ int main(int argc, char **argv) {
 
     if (bfs_type == "serial") {
 
-        bfs::BFSGraph_serial<VertexId, SizeT, Value>(ga, 
-                                                     source,
-                                                     instrument,
-                                                     display_distribution,
-                                                     display_workset);
+        bfs::BFSGraph_serial<VertexId, SizeT, Value>(
+            ga, 
+            source,
+            instrument,
+            display_distribution,
+            display_workset);
 
     } else if (bfs_type == "bitmask") {
 
-        bfs::BFSGraph_gpu_bitmask<VertexId, SizeT, Value>(ga,
-                                                          source,
-                                                          instrument);
+        bfs::BFSGraph_gpu_bitmask<VertexId, SizeT, Value>(
+            ga,
+            source,
+            instrument);
 
     } else if (bfs_type == "queue") {
 
@@ -271,14 +292,16 @@ int main(int argc, char **argv) {
             source,
             instrument,
             block_size,
-            warp_mapped);
+            warp_mapped,
+            group_size);
 
     } else if (bfs_type == "hash") {
 
-        bfs::BFSGraph_gpu_hash<VertexId, SizeT, Value>(ga,
-                                                       source, 
-                                                       slots, 
-                                                       instrument);
+        bfs::BFSGraph_gpu_hash<VertexId, SizeT, Value>(
+            ga,
+            source, 
+            slots, 
+            instrument);
 
     } else {
         fprintf(stderr, "no traverse type is specified. exit quietly\n");

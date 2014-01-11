@@ -43,14 +43,15 @@ int myGraphGen(
     g.initRow(ll_nodes);   
 
     long long start, width;
-    int i;  
-    for (i=0; i<g.n; i++) {
+    int i;
+    for (i = 0; i < g.n; i++) {
         fscanf(fp, "%lld %lld", &start, &width);
         g.row_offsets[i] = start;
     }
+    // i == g.n
+    g.row_offsets[i] = start + width;
 
     // util here, you get the complete CSR represenation!
-    g.row_offsets[i] = start + width;
 
     // read the user-defined source node and skip it
     VertexId  source;
@@ -62,7 +63,7 @@ int myGraphGen(
     g.initColumn(ll_edges);
 
     long long  dest, cost;
-    for (int j=0; j<g.m; j++) {
+    for (int j = 0; j < g.m; j++) {
         fscanf(fp, "%lld %lld", &dest, &cost);
         g.column_indices[j] = dest;
         //g.costs[j] = cost;

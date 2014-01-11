@@ -149,8 +149,7 @@ struct CsrGraph {
         }
 
         // Fill out any trailing rows that didn't have explicit lines in the file
-
-        for (VertexId row = prev_row + 1; row < n; row++) {
+        for (VertexId row = prev_row + 1; row <= n; row++) {
             row_offsets[row] = m;
         }
         time_t mark2 = time(NULL);
@@ -168,6 +167,7 @@ struct CsrGraph {
 
         if (!verbose) return;
 
+/*
         for (SizeT i = 0; i < n; i++) {
             printf("%lld", (long long)i);
             printf(" ->");
@@ -178,6 +178,13 @@ struct CsrGraph {
             }
             printf("\n");
         }
+
+*/
+
+        for (int i=n-50; i<n+1; i++)
+            printf("last: %d\t", row_offsets[i]);
+        
+
     }
 
 
@@ -212,6 +219,7 @@ struct CsrGraph {
         }
 
     }
+
 
 
     /**

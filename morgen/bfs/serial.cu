@@ -138,10 +138,8 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
             if (display_distribution) {
                 for (int i = 0; i < *workset2.sizep; i++) {
                     VertexId outNode = workset2.elems[i];
-                    SizeT outEdgeFirst = g.row_offsets[outNode];
-                    SizeT outEdgeLast = g.row_offsets[outNode+1];
-                    SizeT edges = outEdgeLast - outEdgeFirst;
-                    printf("%d\t", edges);
+                    SizeT outDegree = g.row_offsets[outNode+1] - g.row_offsets[outNode];
+                    printf("%d\t", outDegree);
                 }
                 printf("\n");
             }
@@ -169,13 +167,12 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
             if (display_distribution) {
                 for (int i = 0; i < *workset1.sizep; i++) {
                     VertexId outNode = workset1.elems[i];
-                    SizeT outEdgeFirst = g.row_offsets[outNode];
-                    SizeT outEdgeLast = g.row_offsets[outNode+1];
-                    SizeT edges = outEdgeLast - outEdgeFirst;
-                    printf("%d\t", edges);
+                    SizeT outDegree = g.row_offsets[outNode+1] - g.row_offsets[outNode];
+                    printf("%d\t", outDegree);
                 }
                 printf("\n");
             }
+
 
             if (display_workset) {
                 workset1.print();
@@ -197,6 +194,7 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
     printf("time(s): %f   speed(BE/s): %f\n", total_millis / 1000.0, billion_edges_per_second);
 
     printf("%d nodes has been visited\n", visitedNodes);
+
 
     levels.print_log();
 
