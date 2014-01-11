@@ -95,6 +95,9 @@ int main(int argc, char **argv) {
     // --outdegree : print out degrees of the graph?
     bool display_outdegree = args.CheckCmdLineFlag("outdegree");
     printf("Display outdegree?   %s\n", (display_outdegree ? "Yes" : "No"));
+	
+    bool display_outdegree_uniform = args.CheckCmdLineFlag("outdegree_uniform");
+    printf("Display outdegree_uniform?   %s\n", (display_outdegree_uniform ? "Yes" : "No"));
 
     // --distribution : print the edge distribution each level?
     bool display_distribution = args.CheckCmdLineFlag("distribution");
@@ -245,6 +248,9 @@ int main(int argc, char **argv) {
     if (display_outdegree) 
         ga.printOutDegrees();
 
+	if (display_outdegree_uniform) 
+        ga.printOutDegrees_uniform();
+		
     if (display_distribution || display_workset) 
         bfs::BFSGraph_serial<VertexId, SizeT, Value>(
             ga,

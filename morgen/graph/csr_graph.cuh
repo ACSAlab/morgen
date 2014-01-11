@@ -219,7 +219,49 @@ struct CsrGraph {
         }
 
     }
+	
+    /**
+     * Count the outdegree of each node in uniform style
+     * and display it in the console 
+     */
+    void printOutDegrees_uniform() {
+        
+        int counts[9000]={0};
+        
+        int max_degree = -1;
 
+        for (SizeT i = 0; i < n; i++) 
+		{
+            SizeT outDegree = row_offsets[i+1] - row_offsets[i];
+            if (outDegree > max_degree)
+				max_degree = outDegree;
+            counts[outDegree]++;
+        }
+        
+		if(max_degree<16)
+		{
+			for (int i = -1; i < max_degree; i++) 
+			{
+				printf("Degree %d:\t%d\t%.2f%%\n", i+1, counts[i+1], (float) counts[i+1] * 100.0 / n);
+			}
+		}
+		else
+		{
+			int blank=max_degree/16;
+			int print[16]={0};
+			for(int i=0;i<16;i++)
+			{
+				for(int j=i*blank;j<(i+1)*blank;j++)
+				{
+					print[i]+=counts[j];
+				}
+			}
+			for (int i = -1; i < 15; i++) 
+			{
+				printf("Degree %d:\t%d\t%.2f%%\n", (i+1)*blank, print[i+1], (float) print[i+1] * 100.0 / n);
+			}
+		}
+    }
 
 
     /**
