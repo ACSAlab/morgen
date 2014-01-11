@@ -1,10 +1,7 @@
 #!/bin/bash
 
-
-./bin/test fla nil --outdegree
-./bin/test mesh nil --outdegree
-./bin/test kkt nil --outdegree
-./bin/test copaper nil --outdegree
-./bin/test audi nil --outdegree
-./bin/test rmat nil --outdegree
-./bin/test amazon nil --outdegree
+for exe in mesh fla thermal eco audi copaper livejournal kkt amazon rmat1 rmat2 random1 random2
+do
+	echo ./bin/test $exe nil --outdegree
+	./bin/test $exe nil --outdegree
+done
