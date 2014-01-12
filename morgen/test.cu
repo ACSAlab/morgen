@@ -88,59 +88,83 @@ int main(int argc, char **argv) {
     std::string graph = argv[1];
     std::string bfs_type = argv[2];
 
+
     printf("================================================================\n");
-    printf("Graph: %s\n", graph.c_str());
+    printf("[opt] Graph:\t\t%s\n", graph.c_str());
 
 
-    // --outdegree : print out degrees of the graph?
-    bool display_outdegree = args.CheckCmdLineFlag("outdegree");
-    printf("Display outdegree?   %s\n", (display_outdegree ? "Yes" : "No"));
-	
-    bool display_outdegree_uniform = args.CheckCmdLineFlag("outdegree_uniform");
-    printf("Display outdegree_uniform?   %s\n", (display_outdegree_uniform ? "Yes" : "No"));
+    /*********************************************************************
+     * Parse arguments and display them on the screen
+     *********************************************************************/
+
+    // --outdegree=<log>|<uniform> : print out degrees of the graph?
+    bool display_outdegree_uniform = false;
+    bool display_outdegree_log = false;
+
+    std::string outdegree_str;
+    args.GetCmdLineArgument("outdegree", outdegree_str);
+
+    if (outdegree_str.compare("log") == 0) {
+        display_outdegree_log = true;
+    } else if (outdegree_str.compare("uniform") == 0) {
+        display_outdegree_uniform = true;
+    }
+    
+    if (display_outdegree_uniform) {
+        printf("Display outdegree: \tuniform\n");
+	} else if (display_outdegree_log){
+        printf("Display outdegree: \tuniform\n");
+    } else {
+        printf("Display outdegree: \t\tNo\n");
+    }
 
     // --distribution : print the edge distribution each level?
     bool display_distribution = args.CheckCmdLineFlag("distribution");
-    printf("Display distribution?   %s\n", (display_distribution ? "Yes" : "No"));
+    printf("Display distribution?\t\t%s\n", (display_distribution ? "Yes" : "No"));
 
     // --workset :
     bool display_workset = args.CheckCmdLineFlag("workset");
-    printf("Display workset?   %s\n", (display_workset ? "Yes" : "No"));
+    printf("Display workset?\t\t%s\n", (display_workset ? "Yes" : "No"));
 
     // --metrics :
     bool display_metrics = args.CheckCmdLineFlag("metrics");
-    printf("Display metrics?   %s\n", (display_metrics ? "Yes" : "No"));
+    printf("Display metrics?\t\t%s\n", (display_metrics ? "Yes" : "No"));
 
     // --warp_map :
     bool warp_mapped = args.CheckCmdLineFlag("warp_map");
-    printf("Warp Mapping?   %s\n", (warp_mapped ? "Yes" : "No"));
+    printf("Warp mapping?\t\t%s\n", (warp_mapped ? "Yes" : "No"));
 
     // --instrument : whether instrument each frontier
     bool instrument = args.CheckCmdLineFlag("instrument");
-    printf("Instrument?   %s\n", (instrument ? "Yes" : "No"));
+    printf("Instrument?\t\t%s\n", (instrument ? "Yes" : "No"));
 
-    // --instrument : whether instrument each frontier
-    bool random_source = args.CheckCmdLineFlag("random_source");
-    printf("Random Source?   %s\n", (random_source ? "Yes" : "No"));
-
-    // --source=<source node ID>
+    // --source=<source node ID> | <random>
     VertexId source = 0;
-    args.GetCmdLineArgument("source", source);
-    printf("Source node: %lld\n", source);
+    std::string src_str;
+    bool randomized_source = false;
+    args.GetCmdLineArgument("source", src_str);
+    if (src_str.compare("random") == 0) {
+        randomized_source = true;
+        printf("Source node:\trandomized\n");
+    } else {
+        args.GetCmdLineArgument("source", source);
+        printf("Source node:\t%d\n", source);
+    }
 
     // --slots=<number of slots>
     int slots = 0;
     args.GetCmdLineArgument("slots", slots);
-    printf("Slot number: %d\n", slots);
+    printf("Slot number:\t\t%d\n", slots);
 
     // --block_size=<block size>
     int block_size = 256;
     args.GetCmdLineArgument("block_size", block_size);
-    printf("BLock size: %d (threads)\n", block_size);
+    printf("BLock size(threads):\t%d\n", block_size);
 
+    // --group_size=<group size>
     int group_size = 32;
     args.GetCmdLineArgument("group_size", group_size);
-    printf("Group size: %d (threads)\n", group_size);
+    printf("Group size(threads):\t%d\n", group_size);
 
 
     graph::CsrGraph<VertexId, SizeT, Value> ga;
@@ -245,36 +269,39 @@ int main(int argc, char **argv) {
     // Graph Information display(not verbose)
     ga.printInfo(false); 
 
-    if (display_outdegree) 
-        ga.printOutDegrees();
+    if (display_outdegree_log) 
+        ga.printOutDegreesLog();
 
 	if (display_outdegree_uniform) 
-        ga.printOutDegrees_uniform();
+        ga.printOutDegreesUniform();
 		
     if (display_distribution || display_workset) 
         bfs::BFSGraph_serial<VertexId, SizeT, Value>(
             ga,
-            source, 
+            (VertexId) 0, 
             instrument, 
             display_distribution,
             display_workset);
 
-
     if (display_metrics)
         util::displayUtilizingEfficiency(ga);
+
+
+    /*********************************************************************
+     * Decide which node to start from
+     *********************************************************************/
+
+    if (randomized_source)
+        source = util::randomNode(ga.n);
+    else
+        source = source % ga.n;
+
+    printf("Traversing from %d\n", source);    
+
 
     /*********************************************************************
      * Traversing
      *********************************************************************/
-
-     if (random_source) source = util::randomNode(ga.n);
-     if (source > ga.n) {
-        printf("Error: source %d is out of range\n", source);
-        return 1;
-     } 
-
-     printf("Start traversing from %d... \n", source);
-
     if (bfs_type == "serial") {
 
         bfs::BFSGraph_serial<VertexId, SizeT, Value>(

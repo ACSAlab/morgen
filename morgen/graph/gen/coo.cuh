@@ -44,7 +44,7 @@ int cooGraphGen(
     typedef CooEdgeTuple<VertexId> EdgeTupleT;
 
     time_t mark0 = time(NULL);
-    printf("Coo graph gen...\n");
+    printf("[coo] Generating graph...\n");
 
     char        line[1024];          // remaind line buffer
     char        c;
@@ -75,7 +75,7 @@ int cooGraphGen(
             // read the first line(nodes/edges)
             if (edges_read == -1) {
                 fscanf(fp, "%lld %lld", &ll_nodes, &ll_edges, line);
-                printf("%d nodes, %d edges\n", ll_nodes, ll_edges);
+                printf("[coo] %d nodes, %d edges\n", ll_nodes, ll_edges);
                 coo = (EdgeTupleT*) malloc(sizeof(EdgeTupleT) * ll_edges * 2);
                 edges_read++;
             } else {
@@ -88,7 +88,7 @@ int cooGraphGen(
     }
 
     if (ll_nodes == 0 || ll_edges == 0) {
-        fprintf(stderr, "Error: nodes=%d edges=%d\n", ll_nodes, ll_edges);
+        fprintf(stderr, "[coo] Error: nodes=%d edges=%d\n", ll_nodes, ll_edges);
         return 1;
     }
 
@@ -96,14 +96,14 @@ int cooGraphGen(
 
     // whether read_edges == the claimed edge numbers
     if (edges_read != ll_edges) {
-        fprintf(stderr, "Error: only %d edges read(should be %d)\n", edges_read, ll_edges);
+        fprintf(stderr, "[coo] Error: only %d edges read(should be %d)\n", edges_read, ll_edges);
         return 1;
     }
 
     csr_graph.initFromCoo(coo, ll_nodes, ll_edges);
 
     time_t mark1 = time(NULL);
-    printf("Done parsing (%ds).\n", (int) (mark1 - mark0));
+    printf("[coo] Done parsing (%ds).\n", (int) (mark1 - mark0));
 
     if (coo) free(coo);
     return 0;

@@ -220,7 +220,7 @@ void BFSGraph_gpu_queue(
     // used to allocate per-group variable within a block
     int group_per_block = block_size / group_size;
 
-    printf("gpu queued bfs starts... \n");  
+    printf("GPU queued bfs starts... \n");  
 
     if (instrument) printf("level\tfrontier_size\tblock_num\ttime\n");
 
@@ -232,7 +232,6 @@ void BFSGraph_gpu_queue(
         blockNum = (worksetSize * mapping_factor % block_size == 0 ? 
             worksetSize * mapping_factor / block_size :
             worksetSize * mapping_factor / block_size + 1);
-
         // safe belt: grid width has a limit of 65535
         if (blockNum > 65535) blockNum = 65535;
 
@@ -321,9 +320,9 @@ void BFSGraph_gpu_queue(
 
     }
     
-    printf("gpu queued bfs terminates\n");  
+    printf("GPU queued bfs terminates\n");  
     float billion_edges_per_second = (float)g.m / total_milllis / 1000000.0;
-    printf("time(s): %f   speed(BE/s): %f\n", total_milllis / 1000.0, billion_edges_per_second);
+    printf("Time(s):\t%f\nSpeed(BE/s):\t%f\n", total_milllis / 1000.0, billion_edges_per_second);
 
 
     levels.print_log();

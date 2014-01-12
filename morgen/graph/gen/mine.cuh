@@ -35,11 +35,12 @@ int myGraphGen(
     CsrGraph<VertexId, SizeT, Value> &g)
 {
     time_t mark0 = time(NULL);
-    printf("My graph gen...\n");
+    printf("[my] Generating graph...\n");
 
     // read the number of nodes
     long long ll_nodes; 
     fscanf(fp, "%lld", &ll_nodes);
+    printf("[my] Vertices: %lld", ll_nodes);
     g.initRow(ll_nodes);   
 
     long long start, width;
@@ -60,6 +61,7 @@ int myGraphGen(
     // read the number of edges
     long long  ll_edges;
     fscanf(fp, "%u", &ll_edges);
+    printf("[my] Edges: %lld", ll_edges);
     g.initColumn(ll_edges);
 
     long long  dest, cost;
@@ -70,7 +72,7 @@ int myGraphGen(
     }
 
     time_t mark1 = time(NULL);
-    printf("Done parsing (%ds).\n", (int) (mark1 - mark0));
+    printf("[my] Done parsing (%ds).\n", (int) (mark1 - mark0));
 
     return 0;
 }

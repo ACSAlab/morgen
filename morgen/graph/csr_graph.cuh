@@ -116,7 +116,7 @@ struct CsrGraph {
         SizeT coo_edges,
         bool ordered_rows = false)
     {
-        printf("Converting %d vertices, %d directed edges (%s tuples) to CSR format... \n",
+        printf("[g] Converting %d vertices, %d directed edges (%s tuples) to CSR format... \n",
             coo_nodes, coo_edges, ordered_rows ? "ordered" : "unordered");
         
         time_t mark1 = time(NULL);
@@ -153,7 +153,7 @@ struct CsrGraph {
             row_offsets[row] = m;
         }
         time_t mark2 = time(NULL);
-        printf("Done converting (%ds).\n", (int) (mark2 - mark1));
+        printf("[g] Done converting (%ds).\n", (int) (mark2 - mark1));
     }
     
 
@@ -163,7 +163,18 @@ struct CsrGraph {
      * Display the infomation of the graph at the console
      */    
     void printInfo(bool verbose = false) {
-        fprintf(stdout, "%lld vertices, %lld edges\n", (long long) n, (long long) m);
+        
+        printf("[g] Vertices:\t%lld\n[g] Edges:\t%lld\n", (long long) n, (long long) m);
+
+        SizeT max_degree = -1;
+        SizeT min_degree = 10000000;
+        for (int i = 0; i < n; i++) {
+            SizeT outdegree = row_offsets[i+1] - row_offsets[i];  
+            if (outdegree > max_degree) max_degree = outdegree;
+            if (outdegree < min_degree) min_degree = outdegree;          
+        }
+        printf("[g] Max outdegree:\t%d\n[g] Min outdegree:\t%d\n", max_degree, min_degree);
+
 
         if (!verbose) return;
 
@@ -192,7 +203,7 @@ struct CsrGraph {
      * Count the outdegree of each node in log style
      * and display it in the console 
      */
-    void printOutDegrees() {
+    void printOutDegreesLog() {
         
         int log_counts[32];
         for (int i = 0; i < 32; i++) {
@@ -212,55 +223,49 @@ struct CsrGraph {
             log_counts[times]++;
         }
         
-        for (int i = -1; i < max_times+1; i++) {
+        for (int i = -1; i < max_times; i++) {
             int y = pow(2, i);
-            printf("Degree %d:\t%d\t%.2f%%\n", y, log_counts[i+1],
+            printf("[g] Degree %d:\t%d\t%.2f%%\n", y, log_counts[i+1],
                    (float) log_counts[i+1] * 100.0 / n);
         }
 
     }
-	
+    
     /**
      * Count the outdegree of each node in uniform style
      * and display it in the console 
      */
-    void printOutDegrees_uniform() {
+    void printOutDegreesUniform() {
         
-        int counts[9000]={0};
-        
-        int max_degree = -1;
+        SizeT counts[30000] = {0};
+        SizeT max_degree = -1;
 
-        for (SizeT i = 0; i < n; i++) 
-		{
+        for (SizeT i = 0; i < n; i++) {
             SizeT outDegree = row_offsets[i+1] - row_offsets[i];
             if (outDegree > max_degree)
-				max_degree = outDegree;
+                max_degree = outDegree;
             counts[outDegree]++;
         }
         
-		if(max_degree<16)
-		{
-			for (int i = -1; i < max_degree; i++) 
-			{
-				printf("Degree %d:\t%d\t%.2f%%\n", i+1, counts[i+1], (float) counts[i+1] * 100.0 / n);
-			}
-		}
-		else
-		{
-			int blank=max_degree/16;
-			int print[16]={0};
-			for(int i=0;i<16;i++)
-			{
-				for(int j=i*blank;j<(i+1)*blank;j++)
-				{
-					print[i]+=counts[j];
-				}
-			}
-			for (int i = -1; i < 15; i++) 
-			{
-				printf("Degree %d:\t%d\t%.2f%%\n", (i+1)*blank, print[i+1], (float) print[i+1] * 100.0 / n);
-			}
-		}
+        if(max_degree < 16) {
+            for (int i = -1; i < max_degree; i++) 
+            {
+                printf("[g] Degree %d:\t%d\t%.2f%%\n", i+1, counts[i+1], (float) counts[i+1] * 100.0 / n);
+            }
+        } else {
+            // display loosely
+            int blank = max_degree / 16;
+            int print[16] = {0};
+            for(int i = 0; i < 16; i++) {
+                for(int j = i * blank; j < (i+1) * blank; j++)
+                {
+                    print[i] += counts[j];
+                }
+            }
+            for (int i = -1; i < 15; i++) {
+                printf("[g] Degree %d:\t%d\t%.2f%%\n", (i+1)*blank, print[i+1], (float) print[i+1] * 100.0 / n);
+            }
+        }
     }
 
 

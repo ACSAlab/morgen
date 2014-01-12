@@ -107,7 +107,7 @@ template<typename VertexId, typename SizeT, typename Value>
 void BFSGraph_gpu_bitmask(
     const graph::CsrGraph<VertexId, SizeT, Value> &g,
     VertexId source,
-    bool verbose = false)
+    bool instrument = false)
 {
 
     // use a list to represent bitmask
@@ -142,9 +142,9 @@ void BFSGraph_gpu_bitmask(
         g.n / blockSize :
         g.n / blockSize + 1);
 
-    printf("gpu bitmasked bfs starts... \n");   
 
-    if (verbose) printf("level\ttime\n");
+    printf("GPU bitmasked bfs starts... \n");   
+    if (instrument) printf("level\ttime\n");
 
     float total_milllis = 0.0;
 
@@ -181,18 +181,15 @@ void BFSGraph_gpu_bitmask(
          // timer end
          gpu_timer.stop();
 
-         if (verbose) printf("%d\t%f\n", curLevel, gpu_timer.elapsedMillis());
-
+         if (instrument) printf("%d\t%f\n", curLevel, gpu_timer.elapsedMillis());
          total_milllis += gpu_timer.elapsedMillis();
-
          curLevel += 1;
 
     }
     
-    printf("gpu bitmasked bfs terminates\n");
-    
+    printf("GPU bitmasked bfs terminates\n");
     float billion_edges_per_second = (float)g.m / total_milllis / 1000000.0;
-    printf("time(s): %f   speed(BE/s): %f\n", total_milllis / 1000.0, billion_edges_per_second);
+    printf("Time(s):\t%f\nSpeed(BE/s):\t%f\n", total_milllis / 1000.0, billion_edges_per_second);
 
 
     levels.print_log();

@@ -104,14 +104,14 @@ void BFSGraph_gpu_hash(
     const graph::CsrGraph<VertexId, SizeT, Value> &g, 
     VertexId source, 
     int slots,
-    bool verbose = false)
+    bool instrument = false)
 {
 
     if (slots > 0) {
-        printf("slots = %d\n", slots);
+        printf("Slots = %d\n", slots);
     }
     else {
-        printf("slots should be a positive number\n");
+        printf("Slots should be a positive number\n");
         return;
     }
 
@@ -149,15 +149,11 @@ void BFSGraph_gpu_hash(
     int blockSize = 256;
 
 
-    printf("gpu hashed bfs starts... \n");  
+    printf("GPU hashed bfs starts... \n");  
     
 
-    if (verbose)
-        printf("level\t"
-               "slot_size\t"
-               "frontier_size\t"
-               "ratio\t"
-               "time\n");
+    if (instrument)
+        printf("level\tslot_size\tfrontier_size\tratio\ttime\n");
 
     float total_millis = 0.0;
 
@@ -226,20 +222,17 @@ void BFSGraph_gpu_hash(
 
          // timer end
          gpu_timer.stop();
-
          float mapping_efficiency = (float) lastActualWorksetSize / (lastWorksetSize * slots);
-         
          total_millis += gpu_timer.elapsedMillis();
-
-         if (verbose) printf("%d\t%d\t%d\t%.3f\t%f\n", curLevel, lastWorksetSize, lastActualWorksetSize, mapping_efficiency, gpu_timer.elapsedMillis());
+         if (instrument) printf("%d\t%d\t%d\t%.3f\t%f\n", curLevel, lastWorksetSize, lastActualWorksetSize, mapping_efficiency, gpu_timer.elapsedMillis());
 
          curLevel += 1;
 
     }
     
-    printf("gpu hashed bfs terminates\n");
+    printf("GPU hashed bfs terminates\n");
     float billion_edges_per_second = (float)g.m / total_millis / 1000000.0;
-    printf("time(s): %f   speed(BE/s): %f\n", total_millis / 1000.0, billion_edges_per_second);
+    printf("Time(s):\t%f\nSpeed(BE/s):\t%f\n", total_millis / 1000.0, billion_edges_per_second);
 
     levels.print_log();
 

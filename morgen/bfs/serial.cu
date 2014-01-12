@@ -106,19 +106,17 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
     Value curLevel = 0;
 
 
-    printf("serial bfs starts... \n");  
-    if (!instrument)
-        printf("level\tfrontier_size\ttime\n");
+    printf("Serial bfs starts... \n");  
+    if (instrument) printf("level\tfrontier_size\ttime\n");
 
     float total_millis = 0.0;
 
     while (worksetSize > 0) {
+        lastWorksetSize = worksetSize;
 
 
         util::CpuTimer timer;
         timer.start();
-
-        lastWorksetSize = worksetSize;
 
         if (curLevel % 2 == 0) {
 
@@ -189,10 +187,9 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
         visitedNodes += lastWorksetSize;
     }
 
-    printf("serial bfs terminates\n");  
+    printf("Serial bfs terminates\n");  
     float billion_edges_per_second = (float)g.m / total_millis / 1000000.0;
-    printf("time(s): %f   speed(BE/s): %f\n", total_millis / 1000.0, billion_edges_per_second);
-
+    printf("Time(s):\t%f\nSpeed(BE/s):\t%f\n", total_millis / 1000.0, billion_edges_per_second);
     printf("%d nodes has been visited\n", visitedNodes);
 
 

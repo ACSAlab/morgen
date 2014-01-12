@@ -41,7 +41,7 @@ int dimacsGraphGen(FILE* fp, CsrGraph<VertexId, SizeT, Value> &csr_graph)
 { 
 
     time_t mark0 = time(NULL);
-    printf("Dimacs graph gen...\n");
+    printf("[dimacs] Generating graph...\n");
 
     char        line[1024];          // remaind line buffer
     char        c;                   // read in char
@@ -82,7 +82,7 @@ int dimacsGraphGen(FILE* fp, CsrGraph<VertexId, SizeT, Value> &csr_graph)
                 long long ll_nodes, ll_edges;
                 fscanf(fp, "%lld %lld[^\n]", &ll_nodes, &ll_edges, line);
                 csr_graph.init(ll_nodes, ll_edges * 2);
-                printf("%d nodes, %d directed edges\n", csr_graph.n, csr_graph.m);
+                printf("[dimacs] %d nodes, %d directed edges\n", csr_graph.n, csr_graph.m);
             } else {
                 // process next edge in edge list
                 fscanf(fp, "%lld", &ll_edge);
@@ -100,13 +100,13 @@ int dimacsGraphGen(FILE* fp, CsrGraph<VertexId, SizeT, Value> &csr_graph)
 
     // whether read_edges == the claimed edge numbers
     if (edges_read != csr_graph.m) {
-        fprintf(stderr, "Error: only %d edges read(should be %d)\n", edges_read, csr_graph.m);
+        fprintf(stderr, "[dimacs] Error: only %d edges read(should be %d)\n", edges_read, csr_graph.m);
         csr_graph.del();
         return 1;
     }
 
     time_t mark1 = time(NULL);
-    printf("Done parsing (%ds).\n", (int) (mark1 - mark0));
+    printf("[dimacs] Done parsing (%ds).\n", (int) (mark1 - mark0));
 
     return 0;
 }
