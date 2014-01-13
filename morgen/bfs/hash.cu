@@ -19,19 +19,23 @@
 
 #pragma once
 
-
+#include <morgen/utils/macros.cuh>
 #include <morgen/utils/timing.cuh>
 #include <morgen/utils/list.cuh>
 #include <morgen/workset/hash.cuh>
 
 #include <cuda_runtime_api.h>
 
-#define INF -1
 
 namespace morgen {
 
 namespace bfs {
 
+
+/**
+ * This is a fixed thread-mapping kernel for hashe-based workset
+ * The workset of current level is processed in one kernal launch
+ */
 template<typename VertexId, typename SizeT, typename Value>
 __global__ void
 BFSKernel(SizeT     *row_offsets,
@@ -58,20 +62,16 @@ BFSKernel(SizeT     *row_offsets,
     __syncthreads();
 
 
-
     // tid  0 1 2 3 4 5  <- accord threads num with the logical size   
     //  0   a b c d e f
     //  1   g h i j
     //  2   k l m n o
     //  3   p q
-
     for (int i = 0; i < slot_num_from; i++) {
 
         if (tid < slot_sizes_from[i]) {
 
             VertexId outNode = workset_from[slot_offsets_from[i] + tid];
-            levels[outNode] = curLevel;
-
             SizeT outEdgeFirst = row_offsets[outNode];
             SizeT outEdgeLast = row_offsets[outNode+1];
 
@@ -85,6 +85,8 @@ BFSKernel(SizeT     *row_offsets,
 
                 if (old == 0) { 
 
+                    levels[inNode] = curLevel + 1;
+
                     // hash the pos by inNode id
                     int hash = inNode % slot_num_to;
 
@@ -95,7 +97,95 @@ BFSKernel(SizeT     *row_offsets,
             }   
         }
     }   
+}
 
+
+/**
+ * Each vertex(u) in worksetFrom is assigned with a group of threads.
+ * Then each thead within a group processes one of u's neigbors
+ * at a time. All threads process vertices in SIMD manner.
+ *
+ * Assume GROUP_S = 32
+ * If u has a neigbor number more than 32, each thead within a group will 
+ * iterate over them stridedly. e.g. thread 1 will process 1st, 33th, 65th... 
+ * vertex in the neighbor list, thread 2 will process 2nd, 34th, 66th...
+ */
+template<typename VertexId,
+         typename SizeT,
+         typename Value>
+__global__ void
+BFSKernel_warp_mapped(SizeT     *row_offsets,
+                      VertexId  *column_indices,
+                      VertexId  *worksetFrom,
+                      SizeT     *sizeFrom,
+                      VertexId  *worksetTo,
+                      SizeT     *sizeTo,
+                      Value     *levels,
+                      Value     curLevel,
+                      int       *visited,
+                      int       group_size,
+                      int       group_per_block)
+{
+
+
+
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+
+    int group_offset = tid % group_size;
+    int group_id     = tid / group_size;
+
+    // writing to an empty buffer
+    if (tid == 0) *sizeTo = 0;
+
+    __syncthreads();
+
+
+    // Each group has use a variable to record the total work
+    // amount(neigbors) that belongs to that group
+    // groups/block = thread per block / group size
+    // The size is allocated dynamically
+    volatile __shared__ SizeT edge_first[256];
+    volatile __shared__ SizeT edge_last[256];
+
+
+    // Since the workset can easily exceed 65536, we just let grouped-threads
+    // iterate over a large workset
+    for (int g = group_id; g < *sizeFrom; g += group_per_block * gridDim.x) {
+
+        //if (g % 1024 == 0 && group_offset == 0)
+        //    printf("I am group %d, size: %d, my next: %d\n", g, *sizeFrom, g+group_per_block * gridDim.x);
+
+
+        // First thread in the group do this job read out info 
+        // from global mem to local mem
+        if (group_offset == 0) {
+
+            VertexId outNode = worksetFrom[g];
+            levels[outNode] = curLevel;
+            edge_first[group_id % group_per_block] = row_offsets[outNode];
+            edge_last[group_id % group_per_block] = row_offsets[outNode+1];
+        }
+
+        __syncthreads();
+    
+        // in case the neighbor number > warp size
+        for (SizeT edge = edge_first[group_id % group_per_block] + group_offset;
+             edge < edge_last[group_id % group_per_block];
+             edge += group_size)
+        {
+            
+            VertexId inNode = column_indices[edge];
+
+            int old = atomicExch( (int*)&visited[inNode], 1 );
+
+            if (old == 0) { 
+                // fine-grained allocation
+                SizeT pos= atomicAdd( (SizeT*) &(*sizeTo), 1 );
+                worksetTo[pos] = inNode;
+            }
+        }
+    }
 }
 
 
@@ -124,7 +214,7 @@ void BFSGraph_gpu_hash(
 
     // Initalize auxiliary list
     util::List<Value, SizeT> levels(g.n);
-    levels.all_to(INF);
+    levels.all_to((Value) MORGEN_INF);
 
 
     // visitation list: 0 for unvisited

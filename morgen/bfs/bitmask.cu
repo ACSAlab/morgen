@@ -18,7 +18,7 @@
 
 #pragma once
  
-
+#include <morgen/utils/macros.cuh>
 #include <morgen/utils/timing.cuh>
 #include <morgen/utils/list.cuh>
 #include <morgen/utils/var.cuh>
@@ -26,7 +26,6 @@
 
 #include <cuda_runtime_api.h>
 
-#define INF -1
 
 
 
@@ -118,7 +117,7 @@ void BFSGraph_gpu_bitmask(
 
     // Initalize auxiliary list
     util::List<Value, SizeT> levels(g.n);
-    levels.all_to(INF);
+    levels.all_to((Value) MORGEN_INF);
 
     // visitation
     util::List<int, SizeT> visited(g.n);

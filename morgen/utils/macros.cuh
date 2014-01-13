@@ -26,6 +26,7 @@
 
 
 
+#define MORGEN_INF 2147483647
 
 
 

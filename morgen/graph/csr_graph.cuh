@@ -248,22 +248,23 @@ struct CsrGraph {
         }
         
         if(max_degree < 16) {
-            for (int i = -1; i < max_degree; i++) 
-            {
-                printf("[g] Degree %d:\t%d\t%.2f%%\n", i+1, counts[i+1], (float) counts[i+1] * 100.0 / n);
+            for (int i = -1; i < max_degree; i++) {
+                printf("[g] Degree %d:\t%d\t%.2f%%\n", i+1, counts[i+1],
+                 (float) counts[i+1] * 100.0 / n);
             }
         } else {
             // display loosely
             int blank = max_degree / 16;
-            int print[16] = {0};
-            for(int i = 0; i < 16; i++) {
-                for(int j = i * blank; j < (i+1) * blank; j++)
-                {
+            int print[17] = {0};
+
+            for(int i = 0; i < 17; i++) {
+                for(int j = i * blank; j < (i+1) * blank && j <= max_degree; j++) {
                     print[i] += counts[j];
                 }
             }
-            for (int i = -1; i < 15; i++) {
-                printf("[g] Degree %d:\t%d\t%.2f%%\n", (i+1)*blank, print[i+1], (float) print[i+1] * 100.0 / n);
+            for (int i = -1; i < 16; i++) {
+                printf("[g] Degree %d:\t%d\t%.2f%%\n", (i+1)*blank,
+                 print[i+1], (float) print[i+1] * 100.0 / n);
             }
         }
     }

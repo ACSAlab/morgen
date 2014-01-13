@@ -17,12 +17,11 @@
 
 #pragma once
 
-
+#include <morgen/utils/macros.cuh>
 #include <morgen/utils/timing.cuh>
 #include <morgen/utils/list.cuh>
 #include <morgen/workset/queue.cuh>
 
-#define INF -1
 
 
 
@@ -48,8 +47,6 @@ BFSCore(SizeT     *row_offsets,
 
     for (SizeT i = 0; i < *sizeFrom; i++) {
         VertexId outNode = worksetFrom[i];
-        levels[outNode] = curLevel;
-
         SizeT outEdgeFirst = row_offsets[outNode];
         SizeT outEdgeLast = row_offsets[outNode+1];
 
@@ -60,6 +57,7 @@ BFSCore(SizeT     *row_offsets,
 
                 // if not visited, vistit it & append to the workset
                 if (visited[inNode] == 0) {
+                    levels[inNode] = curLevel + 1;
                     visited[inNode] = 1;
                     worksetTo[*sizeTo] = inNode;
                     *sizeTo += 1;
@@ -83,28 +81,32 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
     // To make better use of the workset, we create two.
     // Instead of creating a new one everytime in each BFS level,
     // we just expand vertices from one to another
-    workset::Queue<VertexId, SizeT> workset1(g.n);
-    workset::Queue<VertexId, SizeT> workset2(g.n);
-
+    workset::Queue<VertexId, SizeT> workset[] = {
+        workset::Queue<VertexId, SizeT>(g.n),
+        workset::Queue<VertexId, SizeT>(g.n),
+    };
+ 
+    // use to select between two worksets
+    // src:  workset[selector]
+    // dest: workset[selector ^ 1]
+    int selector = 0;
 
     // Initalize auxiliary list
     util::List<Value, SizeT> levels(g.n);
-    levels.all_to(INF);
-
+    levels.all_to((Value) MORGEN_INF);
 
     // visitation list: 0 for unvisited
     util::List<int, SizeT> visited(g.n);
     visited.all_to(0);
 
-
     // traverse from source node
-    workset1.append(source);   
+    workset[selector].append(source);   
     visited.set(source, 1);
+    levels.set(source, 0);
     SizeT worksetSize = 1;
     SizeT lastWorksetSize = 1;
     SizeT visitedNodes = 0;
     Value curLevel = 0;
-
 
     printf("Serial bfs starts... \n");  
     if (instrument) printf("level\tfrontier_size\ttime\n");
@@ -114,69 +116,21 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
     while (worksetSize > 0) {
         lastWorksetSize = worksetSize;
 
-
         util::CpuTimer timer;
         timer.start();
 
-        if (curLevel % 2 == 0) {
+        BFSCore(
+            g.row_offsets,
+            g.column_indices,
+            workset[selector].elems,
+            workset[selector].sizep,
+            workset[selector ^ 1].elems,
+            workset[selector ^ 1].sizep,
+            levels.elems,
+            curLevel,     
+            visited.elems);
 
-            BFSCore(g.row_offsets,
-                    g.column_indices,
-                    workset1.elems,
-                    workset1.sizep,
-                    workset2.elems,
-                    workset2.sizep,
-                    levels.elems,
-                    curLevel,     
-                    visited.elems);
-
-            worksetSize = workset2.size();
-
-            // traverse workset set, and query the edge number, then print it
-            if (display_distribution) {
-                for (int i = 0; i < *workset2.sizep; i++) {
-                    VertexId outNode = workset2.elems[i];
-                    SizeT outDegree = g.row_offsets[outNode+1] - g.row_offsets[outNode];
-                    printf("%d\t", outDegree);
-                }
-                printf("\n");
-            }
-
-            if (display_workset) {
-                workset2.print();
-            }
-
-
-        } else {
-
-            BFSCore(g.row_offsets,
-                    g.column_indices,
-                    workset2.elems,
-                    workset2.sizep,
-                    workset1.elems,
-                    workset1.sizep,
-                    levels.elems,
-                    curLevel,
-                    visited.elems);
-
-            worksetSize = workset1.size();
-
-            // traverse workset set, and query the edge number, then print it
-            if (display_distribution) {
-                for (int i = 0; i < *workset1.sizep; i++) {
-                    VertexId outNode = workset1.elems[i];
-                    SizeT outDegree = g.row_offsets[outNode+1] - g.row_offsets[outNode];
-                    printf("%d\t", outDegree);
-                }
-                printf("\n");
-            }
-
-
-            if (display_workset) {
-                workset1.print();
-            }
-
-        }
+        worksetSize = workset[selector ^ 1].size();
 
         timer.stop();
 
@@ -185,6 +139,20 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
         total_millis += timer.elapsedMillis();
         curLevel += 1;
         visitedNodes += lastWorksetSize;
+
+        // traverse workset set, and query the edge number, then print it
+        if (display_distribution) {
+            for (int i = 0; i < *workset[selector ^ 1].sizep; i++) {
+                VertexId outNode = workset[selector ^ 1].elems[i];
+                SizeT outDegree = g.row_offsets[outNode+1] - g.row_offsets[outNode];
+                printf("%d\t", outDegree);
+            }
+            printf("\n");
+        }
+
+        if (display_workset) workset[selector ^ 1].print();
+
+        selector = selector ^ 1;
     }
 
     printf("Serial bfs terminates\n");  
@@ -197,8 +165,8 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
 
     levels.del();
     visited.del();
-    workset1.del();
-    workset2.del();
+    workset[0].del();
+    workset[1].del();
 
 }
 

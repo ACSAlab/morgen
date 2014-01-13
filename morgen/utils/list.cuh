@@ -19,6 +19,9 @@
 #pragma once
 
 
+#include <morgen/utils/macros.cuh>
+
+
  namespace morgen {
 
  namespace util {
@@ -58,17 +61,17 @@ struct List
     }
 
     void print_log() {
-        int neg_count = 0;
+        int inf_count = 0;
 
         FILE* log = fopen("log.txt", "w");
 
         for (int i = 0; i < n; i++) {
-            if (elems[i]<0)  neg_count++; 
+            if (elems[i] == MORGEN_INF)  inf_count++; 
             fprintf(log, "%lld\n", (long long)elems[i]);
         }
         fprintf(log, "\n");
 
-        printf("%.2f%% is negative\n", (float) neg_count / n * 100.0);
+        printf("%.2f%% is infinity\n", (float) inf_count / n * 100.0);
 
     }
 

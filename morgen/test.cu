@@ -35,25 +35,51 @@ using namespace morgen;
 
 void usage() {
     printf("\ntest <graph> <bfs type> [--device=<device index>] "
-            "[--slots=<number of slots>] [--outdegree] [--distribution] [--workset]"
-            "[--src=<source idx>] [--instrument] [--random_source] "
+            "[--slots=<number of slots>] [--outdegree=log|uniform] [--distribution] [--workset]"
+            "[--src=<source idx>|random] [--instrument] "
+            "[--ordered]"
             "[--group_size=<group size>]\n"
             "\n"
             "<graph>\n"
-            "  tiny: tiny graph for debugging\n"
-            "  fla: Florida Road map\n"
-            "  mesh: 6-point 2D mesh\n"
-            "  kkt: Optimal power flow, nonlinear optimization (KKT)\n"
-            "  copaper: CopaperCiteSeer\n"
-            "  audi: symmetric rb matrix\n"
-            "  rmat1: random small world graph (n=5M  m=60M)\n"
-            "  rmat2: random small world graph (n=2M  n=100M)\n"
-            "  amazon: Amazon product co-buying\n"
-            "  random1: Erdos-Renyi or uniformly random graph (n=5M n=60M)\n"
-            "  random2: Erdos-Renyi or uniformly random graph (n=2M n=100M)\n"
-            "  eco: circuit theory applied to animal/gene flow\n"
-            "  thermal: FEM 3D nonlinear thermal problem, 8-node bricks as volume elements\n"
-            "  livejournal: LiveJournal's social network\n"
+            "    tiny: tiny graph for debugging\n"
+            "    fla: Florida Road map\n"
+            "    mesh: 6-point 2D mesh\n"
+            "    kkt: Optimal power flow, nonlinear optimization (KKT)\n"
+            "    copaper: CopaperCiteSeer\n"
+            "    audi: symmetric rb matrix\n"
+            "    rmat1: random small world graph (n=5M  m=60M)\n"
+            "    rmat2: random small world graph (n=2M  n=100M)\n"
+            "    amazon: Amazon product co-buying\n"
+            "    random1: Erdos-Renyi or uniformly random graph (n=5M n=60M)\n"
+            "    random2: Erdos-Renyi or uniformly random graph (n=2M n=100M)\n"
+            "    eco: circuit theory applied to animal/gene flow\n"
+            "    thermal: FEM 3D nonlinear thermal problem, 8-node bricks as volume elements\n"
+            "    livejournal: LiveJournal's social network\n"
+            "\n"
+            "--outdegree=log|uniform\n"
+            "    print out degrees of the graph in log or uniform style\n"
+            "\n"
+            "--distribution\n"
+            "    print the edge distribution each level or not\n"
+            "\n"
+            "--workset\n"
+            "    display the workset or not\n"
+            "\n"
+            "--metrics\n"
+            "    display the metrics or not\n"
+            "\n"
+            "--warp_map\n"
+            "    warp mapping or thread mapping strategy\n"
+            "\n"
+            "--instrument\n"
+            "    instrument the result in each level\n"
+            "\n"
+            "--source=<source node ID>|random\n"
+            "    which node to start from\n"
+            "\n"
+            "--slots=<number of slots>\n"
+            "--block_size=<block size>\n"
+            "--group_size=<group size>\n"
             "\n");
 }
 
@@ -74,7 +100,6 @@ int main(int argc, char **argv) {
     typedef int Value;
 
 
-
     /*********************************************************************
      * Commandline parsing
      *********************************************************************/
@@ -90,14 +115,12 @@ int main(int argc, char **argv) {
 
 
     printf("================================================================\n");
-    printf("[opt] Graph:\t\t%s\n", graph.c_str());
+    printf("Graph:\t\t%s\n", graph.c_str());
 
 
     /*********************************************************************
      * Parse arguments and display them on the screen
      *********************************************************************/
-
-    // --outdegree=<log>|<uniform> : print out degrees of the graph?
     bool display_outdegree_uniform = false;
     bool display_outdegree_log = false;
 
@@ -118,27 +141,25 @@ int main(int argc, char **argv) {
         printf("Display outdegree: \t\tNo\n");
     }
 
-    // --distribution : print the edge distribution each level?
+
     bool display_distribution = args.CheckCmdLineFlag("distribution");
     printf("Display distribution?\t\t%s\n", (display_distribution ? "Yes" : "No"));
 
-    // --workset :
     bool display_workset = args.CheckCmdLineFlag("workset");
     printf("Display workset?\t\t%s\n", (display_workset ? "Yes" : "No"));
 
-    // --metrics :
     bool display_metrics = args.CheckCmdLineFlag("metrics");
     printf("Display metrics?\t\t%s\n", (display_metrics ? "Yes" : "No"));
 
-    // --warp_map :
     bool warp_mapped = args.CheckCmdLineFlag("warp_map");
     printf("Warp mapping?\t\t%s\n", (warp_mapped ? "Yes" : "No"));
 
-    // --instrument : whether instrument each frontier
     bool instrument = args.CheckCmdLineFlag("instrument");
     printf("Instrument?\t\t%s\n", (instrument ? "Yes" : "No"));
 
-    // --source=<source node ID> | <random>
+    bool unordered = args.CheckCmdLineFlag("unordered");
+    printf("Unordered?\t\t%s\n", (unordered ? "Yes" : "No"));
+
     VertexId source = 0;
     std::string src_str;
     bool randomized_source = false;
@@ -151,17 +172,14 @@ int main(int argc, char **argv) {
         printf("Source node:\t%d\n", source);
     }
 
-    // --slots=<number of slots>
     int slots = 0;
     args.GetCmdLineArgument("slots", slots);
-    printf("Slot number:\t\t%d\n", slots);
+    printf("Slot number:\t%d\n", slots);
 
-    // --block_size=<block size>
     int block_size = 256;
     args.GetCmdLineArgument("block_size", block_size);
     printf("BLock size(threads):\t%d\n", block_size);
 
-    // --group_size=<group size>
     int group_size = 32;
     args.GetCmdLineArgument("group_size", group_size);
     printf("Group size(threads):\t%d\n", group_size);
@@ -275,7 +293,7 @@ int main(int argc, char **argv) {
 	if (display_outdegree_uniform) 
         ga.printOutDegreesUniform();
 		
-    if (display_distribution || display_workset) 
+    if (display_distribution) 
         bfs::BFSGraph_serial<VertexId, SizeT, Value>(
             ga,
             (VertexId) 0, 
@@ -326,7 +344,9 @@ int main(int argc, char **argv) {
             instrument,
             block_size,
             warp_mapped,
-            group_size);
+            group_size,
+            unordered,
+            display_workset);
 
     } else if (bfs_type == "hash") {
 
