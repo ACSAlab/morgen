@@ -22,7 +22,7 @@
 #include <time.h>
 
 #include <algorithm>
-
+#include <vector>
 #include <morgen/graph/coo_edge_tuple.cuh>
 #include <morgen/utils/cuda_util.cuh>
 #include <cuda_runtime_api.h>
@@ -166,14 +166,27 @@ struct CsrGraph {
         
         printf("[g] Vertices:\t%lld\n[g] Edges:\t%lld\n", (long long) n, (long long) m);
 
-        SizeT max_degree = -1;
-        SizeT min_degree = 10000000;
+
+        SizeT total_degree = 0;
+
+        std::vector<Value> outdegree_vec;
+
         for (int i = 0; i < n; i++) {
             SizeT outdegree = row_offsets[i+1] - row_offsets[i];  
-            if (outdegree > max_degree) max_degree = outdegree;
-            if (outdegree < min_degree) min_degree = outdegree;          
+            outdegree_vec.push_back(outdegree); 
+            total_degree += outdegree;          
         }
-        printf("[g] Max outdegree:\t%d\n[g] Min outdegree:\t%d\n", max_degree, min_degree);
+
+        printf("[g] Avg. Outdegree:\t%.1f\n", (float) total_degree / n);
+
+        std::sort(outdegree_vec.begin(), outdegree_vec.end());
+        Value min = outdegree_vec[0];
+        Value quartile_first = outdegree_vec[n/4];
+        Value median = outdegree_vec[n/2];
+        Value quartile_second = outdegree_vec[n / 4 * 3];
+        Value max = outdegree_vec[n-1];
+
+        printf("[g] Quartiles:\t%d\t%d\t%d\t%d\t%d\n", min, quartile_first, median, quartile_second, max);
 
 
         if (!verbose) return;

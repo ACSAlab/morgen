@@ -1,3 +1,7 @@
 
 
-Tomorrow is another day
+
+source ./scripts/env.sh
+
+
+./bin/test --help

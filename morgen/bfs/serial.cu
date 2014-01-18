@@ -109,12 +109,21 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
     Value curLevel = 0;
 
     printf("Serial bfs starts... \n");  
-    if (instrument) printf("level\tfrontier_size\ttime\n");
+    if (instrument) printf("level\tfrontier size\tnew frontier size\tout edges\ttime\n");
 
     float total_millis = 0.0;
 
     while (worksetSize > 0) {
         lastWorksetSize = worksetSize;
+
+        // calculate the outgoing edges before start searching.
+        SizeT outgoingEdges = 0;
+        for (int i = 0; i < worksetSize; i++) {
+            VertexId outNode = workset[selector].elems[i];
+            SizeT outEdges = g.row_offsets[outNode+1] - g.row_offsets[outNode];
+            outgoingEdges += outEdges;
+        }
+
 
         util::CpuTimer timer;
         timer.start();
@@ -135,7 +144,7 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
         timer.stop();
 
         // do not print the timing infos when printing distribution
-        if (instrument) printf("%d\t%d\t%.12f\n", curLevel, lastWorksetSize, timer.elapsedMillis());
+        if (instrument) printf("%d\t%d\t%d\t%d\t%.12f\n", curLevel, lastWorksetSize, worksetSize, outgoingEdges, timer.elapsedMillis());
         total_millis += timer.elapsedMillis();
         curLevel += 1;
         visitedNodes += lastWorksetSize;

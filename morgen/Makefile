@@ -54,8 +54,8 @@ INC = -I$(CUDA_INC) -I. -I..
 # Compiler Flags
 #-------------------------------------------------------------------------------
 
-NVCCFLAFS = -Xptxas -v -Xcudafe 
-
+NVCCFLAGS = -Xptxas -v -Xcudafe 
+#--ptxas-options=-v
 
 #-------------------------------------------------------------------------------
 # (make test) 

@@ -41,7 +41,7 @@ template<
     typename Value,
     bool ORDERED>
 __global__ void
-BFSKernel_thread_map(
+BFSKernel_queue_thread_map(
     SizeT     *row_offsets,
     VertexId  *column_indices,
     VertexId  *worksetFrom,
@@ -109,7 +109,7 @@ template<
     typename Value,
     bool ORDERED>
 __global__ void
-BFSKernel_warp_map(
+BFSKernel_queue_group_map(
     SizeT     *row_offsets,
     VertexId  *column_indices,
     VertexId  *worksetFrom,
@@ -232,7 +232,7 @@ void BFSGraph_gpu_queue(
     SizeT lastWorksetSize = 0;
     Value curLevel = 0;
     float total_milllis = 0.0;
-
+    int accumulatedBlocks = 0;
 
     // kernel configuration
     int blockNum = 16;
@@ -250,6 +250,7 @@ void BFSGraph_gpu_queue(
         blockNum = (worksetSize * mapping_factor % block_size == 0 ? 
             worksetSize * mapping_factor / block_size :
             worksetSize * mapping_factor / block_size + 1);
+        
         // safe belt: grid width has a limit of 65535
         if (blockNum > 65535) blockNum = 65535;
 
@@ -259,7 +260,7 @@ void BFSGraph_gpu_queue(
 
         if (warp_mapped) {
             if (unordered) {
-                BFSKernel_warp_map<VertexId, SizeT, Value, false><<<blockNum, block_size>>>(
+                BFSKernel_queue_group_map<VertexId, SizeT, Value, false><<<blockNum, block_size>>>(
                     g.d_row_offsets,
                     g.d_column_indices,
                     workset[selector].d_elems,
@@ -274,7 +275,7 @@ void BFSGraph_gpu_queue(
 
             } else {
                 // unorderd
-                BFSKernel_warp_map<VertexId, SizeT, Value, true><<<blockNum, block_size>>>(
+                BFSKernel_queue_group_map<VertexId, SizeT, Value, true><<<blockNum, block_size>>>(
                     g.d_row_offsets,
                     g.d_column_indices,
                     workset[selector].d_elems,
@@ -291,7 +292,7 @@ void BFSGraph_gpu_queue(
         } else { // thread map
 
             if (unordered) {
-                BFSKernel_thread_map<VertexId, SizeT, Value, false><<<blockNum, block_size>>>(
+                BFSKernel_queue_thread_map<VertexId, SizeT, Value, false><<<blockNum, block_size>>>(
                     g.d_row_offsets,                                        
                     g.d_column_indices,
                     workset[selector].d_elems,
@@ -304,7 +305,7 @@ void BFSGraph_gpu_queue(
 
             } else {
                 // unordered
-                BFSKernel_thread_map<VertexId, SizeT, Value, true><<<blockNum, block_size>>>(
+                BFSKernel_queue_thread_map<VertexId, SizeT, Value, true><<<blockNum, block_size>>>(
                     g.d_row_offsets,                                        
                     g.d_column_indices,
                     workset[selector].d_elems,
@@ -323,11 +324,10 @@ void BFSGraph_gpu_queue(
 
         gpu_timer.stop();
 
-        if (instrument) printf("%d\t%d\t%d\t%f\n", curLevel, lastWorksetSize, blockNum, gpu_timer.elapsedMillis());
-        total_milllis += gpu_timer.elapsedMillis();
-
+        if (instrument) printf("%d\t%d\t%d\t%f\n", curLevel, lastWorksetSize, blockNum, gpu_timer.elapsedMillis());        
         if (display_workset) workset[selector ^ 1].print();
-
+        total_milllis += gpu_timer.elapsedMillis();
+        accumulatedBlocks += blockNum;
         curLevel += 1;
         selector = selector ^ 1;
 
@@ -338,7 +338,7 @@ void BFSGraph_gpu_queue(
     printf("GPU queued bfs terminates\n");  
     float billion_edges_per_second = (float)g.m / total_milllis / 1000000.0;
     printf("Time(s):\t%f\nSpeed(BE/s):\t%f\n", total_milllis / 1000.0, billion_edges_per_second);
-
+    printf("Accumulated Blocks: \t%d\n", accumulatedBlocks);
 
     levels.print_log();
 

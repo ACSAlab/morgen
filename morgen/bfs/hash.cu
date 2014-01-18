@@ -38,19 +38,20 @@ namespace bfs {
  */
 template<typename VertexId, typename SizeT, typename Value>
 __global__ void
-BFSKernel(SizeT     *row_offsets,
-          VertexId  *column_indices,
-          VertexId  *workset_from,
-          SizeT     slot_num_from,
-          SizeT     *slot_offsets_from,
-          SizeT     *slot_sizes_from,
-          SizeT     *workset_to,
-          SizeT     slot_num_to,
-          SizeT     *slot_offsets_to,
-          VertexId  *slot_sizes_to,
-          Value     *levels,
-          Value     curLevel,
-          int       *visited)
+BFSKernel_hash_thread_map(
+  SizeT     *row_offsets,
+  VertexId  *column_indices,
+  VertexId  *workset_from,
+  SizeT     slot_num_from,
+  SizeT     *slot_offsets_from,
+  SizeT     *slot_sizes_from,
+  SizeT     *workset_to,
+  SizeT     slot_num_to,
+  SizeT     *slot_offsets_to,
+  VertexId  *slot_sizes_to,
+  Value     *levels,
+  Value     curLevel,
+  int       *visited)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -100,93 +101,7 @@ BFSKernel(SizeT     *row_offsets,
 }
 
 
-/**
- * Each vertex(u) in worksetFrom is assigned with a group of threads.
- * Then each thead within a group processes one of u's neigbors
- * at a time. All threads process vertices in SIMD manner.
- *
- * Assume GROUP_S = 32
- * If u has a neigbor number more than 32, each thead within a group will 
- * iterate over them stridedly. e.g. thread 1 will process 1st, 33th, 65th... 
- * vertex in the neighbor list, thread 2 will process 2nd, 34th, 66th...
- */
-template<typename VertexId,
-         typename SizeT,
-         typename Value>
-__global__ void
-BFSKernel_warp_mapped(SizeT     *row_offsets,
-                      VertexId  *column_indices,
-                      VertexId  *worksetFrom,
-                      SizeT     *sizeFrom,
-                      VertexId  *worksetTo,
-                      SizeT     *sizeTo,
-                      Value     *levels,
-                      Value     curLevel,
-                      int       *visited,
-                      int       group_size,
-                      int       group_per_block)
-{
 
-
-
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-
-
-    int group_offset = tid % group_size;
-    int group_id     = tid / group_size;
-
-    // writing to an empty buffer
-    if (tid == 0) *sizeTo = 0;
-
-    __syncthreads();
-
-
-    // Each group has use a variable to record the total work
-    // amount(neigbors) that belongs to that group
-    // groups/block = thread per block / group size
-    // The size is allocated dynamically
-    volatile __shared__ SizeT edge_first[256];
-    volatile __shared__ SizeT edge_last[256];
-
-
-    // Since the workset can easily exceed 65536, we just let grouped-threads
-    // iterate over a large workset
-    for (int g = group_id; g < *sizeFrom; g += group_per_block * gridDim.x) {
-
-        //if (g % 1024 == 0 && group_offset == 0)
-        //    printf("I am group %d, size: %d, my next: %d\n", g, *sizeFrom, g+group_per_block * gridDim.x);
-
-
-        // First thread in the group do this job read out info 
-        // from global mem to local mem
-        if (group_offset == 0) {
-
-            VertexId outNode = worksetFrom[g];
-            levels[outNode] = curLevel;
-            edge_first[group_id % group_per_block] = row_offsets[outNode];
-            edge_last[group_id % group_per_block] = row_offsets[outNode+1];
-        }
-
-        __syncthreads();
-    
-        // in case the neighbor number > warp size
-        for (SizeT edge = edge_first[group_id % group_per_block] + group_offset;
-             edge < edge_last[group_id % group_per_block];
-             edge += group_size)
-        {
-            
-            VertexId inNode = column_indices[edge];
-
-            int old = atomicExch( (int*)&visited[inNode], 1 );
-
-            if (old == 0) { 
-                // fine-grained allocation
-                SizeT pos= atomicAdd( (SizeT*) &(*sizeTo), 1 );
-                worksetTo[pos] = inNode;
-            }
-        }
-    }
-}
 
 
 template<typename VertexId, typename SizeT, typename Value>
@@ -208,9 +123,16 @@ void BFSGraph_gpu_hash(
     // To make better use of the workset, we create two.
     // Instead of creating a new one everytime in each BFS level,
     // we just expand vertices from one to another
-    workset::NaiveHash<VertexId, SizeT> workset1(g.n, slots);
-    workset::NaiveHash<VertexId, SizeT> workset2(g.n, slots);
 
+    workset::NaiveHash<VertexId, SizeT>  workset[] = {
+        workset::NaiveHash<VertexId, SizeT>(g.n, slots),
+        workset::NaiveHash<VertexId, SizeT>(g.n, slots),
+    };
+
+    // use to select between two worksets
+    // src:  workset[selector]
+    // dest: workset[selector ^ 1]
+    int selector = 0;
 
     // Initalize auxiliary list
     util::List<Value, SizeT> levels(g.n);
@@ -223,7 +145,7 @@ void BFSGraph_gpu_hash(
 
 
     // traverse from source node
-    workset1.insert(source);   
+    workset[0].insert(source);   
     levels.set(source, 0);
     visited.set(source, 1);
 
@@ -238,10 +160,7 @@ void BFSGraph_gpu_hash(
     int blockNum = 16;
     int blockSize = 256;
 
-
     printf("GPU hashed bfs starts... \n");  
-    
-
     if (instrument)
         printf("level\tslot_size\tfrontier_size\tratio\ttime\n");
 
@@ -263,61 +182,37 @@ void BFSGraph_gpu_hash(
         util::GpuTimer gpu_timer;
         gpu_timer.start();
 
-        if (curLevel % 2 == 0) 
-        {
 
             // call kernel with device pointers
-            BFSKernel<<<blockNum, blockSize>>>(g.d_row_offsets,
-                                               g.d_column_indices,
-                                               workset1.d_elems,
-                                               workset1.slot_num,
-                                               workset1.d_slot_offsets,
-                                               workset1.d_slot_sizes,                                    
-                                               workset2.d_elems,
-                                               workset2.slot_num,
-                                               workset2.d_slot_offsets,
-                                               workset2.d_slot_sizes,
-                                               levels.d_elems,
-                                               curLevel,     
-                                               visited.d_elems);
+        BFSKernel_hash_thread_map<<<blockNum, blockSize>>>(
+            g.d_row_offsets,
+            g.d_column_indices,
+            workset[selector].d_elems,
+            workset[selector].slot_num,
+            workset[selector].d_slot_offsets,
+            workset[selector].d_slot_sizes,                                    
+            workset[selector ^ 1].d_elems,
+            workset[selector ^ 1].slot_num,
+            workset[selector ^ 1].d_slot_offsets,
+            workset[selector ^ 1].d_slot_sizes,
+            levels.d_elems,
+            curLevel,     
+            visited.d_elems);
 
-            if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
+        if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
+
+        worksetSize = workset[selector ^ 1].max_slot_size();
+        actualWorksetSize = workset[selector ^ 1].sum_slot_size();
 
 
-            worksetSize = workset2.max_slot_size();
-            actualWorksetSize = workset2.sum_slot_size();
-         } else {
+        // timer end
+        gpu_timer.stop();
+        float mapping_efficiency = (float) lastActualWorksetSize / (lastWorksetSize * slots);
+        total_millis += gpu_timer.elapsedMillis();
+        if (instrument) printf("%d\t%d\t%d\t%.3f\t%f\n", curLevel, lastWorksetSize, lastActualWorksetSize, mapping_efficiency, gpu_timer.elapsedMillis());
 
-            BFSKernel<<<blockNum, blockSize>>>(g.d_row_offsets,
-                                               g.d_column_indices,
-                                               workset2.d_elems,
-                                               workset2.slot_num,
-                                               workset2.d_slot_offsets,
-                                               workset2.d_slot_sizes,                                    
-                                               workset1.d_elems,
-                                               workset1.slot_num,
-                                               workset1.d_slot_offsets,
-                                               workset1.d_slot_sizes,
-                                               levels.d_elems,
-                                               curLevel,     
-                                               visited.d_elems);
-
-            if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
-
-            
-            worksetSize = workset1.max_slot_size();
-            actualWorksetSize = workset1.sum_slot_size();
-
-         }
-
-         // timer end
-         gpu_timer.stop();
-         float mapping_efficiency = (float) lastActualWorksetSize / (lastWorksetSize * slots);
-         total_millis += gpu_timer.elapsedMillis();
-         if (instrument) printf("%d\t%d\t%d\t%.3f\t%f\n", curLevel, lastWorksetSize, lastActualWorksetSize, mapping_efficiency, gpu_timer.elapsedMillis());
-
-         curLevel += 1;
-
+        curLevel += 1;
+        selector = selector ^ 1;
     }
     
     printf("GPU hashed bfs terminates\n");
@@ -328,8 +223,8 @@ void BFSGraph_gpu_hash(
 
     levels.del();
     visited.del();
-    workset1.del();
-    workset2.del();
+    workset[0].del();
+    workset[1].del();
     
 }
 
