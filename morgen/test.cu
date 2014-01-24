@@ -25,6 +25,7 @@
 #include <morgen/bfs/queue.cu>
 #include <morgen/bfs/hash.cu>
 #include <morgen/bfs/serial.cu>
+ #include <morgen/utils/stats.cuh>
 #include <morgen/utils/command_line.cuh>
 #include <morgen/utils/random_node.cuh>
 #include <morgen/utils/utilizing_efficiency.cuh>
@@ -123,29 +124,8 @@ int main(int argc, char **argv) {
     printf("================================================================\n");
     printf("Graph:\t\t%s\n", graph.c_str());
 
-
-    /*********************************************************************
-     * Parse arguments and display them on the screen
-     *********************************************************************/
-    bool display_outdegree_uniform = false;
-    bool display_outdegree_log = false;
-
-    std::string outdegree_str;
-    args.GetCmdLineArgument("outdegree", outdegree_str);
-
-    if (outdegree_str.compare("log") == 0) {
-        display_outdegree_log = true;
-    } else if (outdegree_str.compare("uniform") == 0) {
-        display_outdegree_uniform = true;
-    }
-    
-    if (display_outdegree_uniform) {
-        printf("Display outdegree: \tuniform\n");
-	} else if (display_outdegree_log){
-        printf("Display outdegree: \tuniform\n");
-    } else {
-        printf("Display outdegree: \t\tNo\n");
-    }
+    bool display_stat = args.CheckCmdLineFlag("stat");
+    printf("Display statistics?\t\t%s\n", (display_stat ? "Yes" : "No"));
 
 
     bool display_distribution = args.CheckCmdLineFlag("distribution");
@@ -290,14 +270,9 @@ int main(int argc, char **argv) {
      * Display
      *********************************************************************/
 
-    // Graph Information display(not verbose)
-    ga.printInfo(false); 
-
-    if (display_outdegree_log) 
-        ga.printOutDegreesLog();
-
-	if (display_outdegree_uniform) 
-        ga.printOutDegreesUniform();
+    util::Stats<VertexId, SizeT, Value> stats;
+    stats.gen(ga);
+    if (display_stat) stats.display();
 		
     if (display_distribution) 
         bfs::BFSGraph_serial<VertexId, SizeT, Value>(
@@ -307,8 +282,7 @@ int main(int argc, char **argv) {
             display_distribution,
             display_workset);
 
-    if (display_metrics)
-        util::displayUtilizingEfficiency(ga);
+    if (display_metrics) util::displayUtilizingEfficiency(ga);
 
 
     /*********************************************************************
