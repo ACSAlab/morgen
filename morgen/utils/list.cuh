@@ -75,6 +75,12 @@ struct List
 
     }
 
+    void print() {
+        for (int i = 0; i < n; i++) {
+            printf("%lld\n", (long long)elems[i]);
+        }
+    }
+
     void set(SizeT i, Value x) { elems[i] = x; }
 
 

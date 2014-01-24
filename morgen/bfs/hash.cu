@@ -22,7 +22,7 @@
 #include <morgen/utils/macros.cuh>
 #include <morgen/utils/timing.cuh>
 #include <morgen/utils/list.cuh>
-#include <morgen/workset/hash.cuh>
+#include <morgen/workset/naive_hash.cuh>
 
 #include <cuda_runtime_api.h>
 

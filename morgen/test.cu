@@ -24,8 +24,9 @@
 #include <morgen/bfs/bitmask.cu>
 #include <morgen/bfs/queue.cu>
 #include <morgen/bfs/hash.cu>
+#include <morgen/bfs/topo.cu>
 #include <morgen/bfs/serial.cu>
- #include <morgen/utils/stats.cuh>
+#include <morgen/utils/stats.cuh>
 #include <morgen/utils/command_line.cuh>
 #include <morgen/utils/random_node.cuh>
 #include <morgen/utils/utilizing_efficiency.cuh>
@@ -334,6 +335,14 @@ int main(int argc, char **argv) {
             ga,
             source, 
             slots, 
+            instrument);
+
+    } else if (bfs_type == "topo") {
+
+        bfs::BFSGraph_gpu_topo<VertexId, SizeT, Value>(
+            ga,
+            source, 
+            stats,
             instrument);
 
     } else {
