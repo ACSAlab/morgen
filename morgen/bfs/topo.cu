@@ -74,9 +74,10 @@ BFSKernel_topo_thread_map(
                 levels[inNode] = curLevel + 1;
                 // hash the pos by inNode id
                 int hash = outdegrees[inNode];
-                // exclusively get the writing position within the slot
-                SizeT pos= atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
-                workset_to[slot_offsets_to[hash] + pos] = inNode;
+                if (hash >= 0) { // ignore the 0-degree nodes
+                    SizeT pos= atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
+                    workset_to[slot_offsets_to[hash] + pos] = inNode;
+                }
             }
         }   
     }
@@ -105,6 +106,9 @@ void BFSGraph_gpu_topo(
     };
 
     // create a outdegree table first
+    // outdegree:     0  1  2-3  4-7  8-15  16-31
+    // altered       -1  0  1    2    3     4
+    // []
     util::List<Value, SizeT> outdegrees(g.n);
     for (SizeT i = 0; i < g.n; i++) {
         SizeT outDegree = g.row_offsets[i+1] - g.row_offsets[i];
@@ -141,6 +145,7 @@ void BFSGraph_gpu_topo(
     SizeT worksetSize = 1;
     SizeT lastWorksetSize = 0;
     Value curLevel = 0;
+    int accumulatedBlocks = 0;
 
     // kernel configuration
     int blockNum = 16;
@@ -199,7 +204,9 @@ void BFSGraph_gpu_topo(
 
             gpu_timer.stop();
             level_millis += gpu_timer.elapsedMillis();
-            if (instrument) printf("[slot] %d\t%d\t%f\n", i, partialWorksetSize, gpu_timer.elapsedMillis());
+            accumulatedBlocks += blockNum;
+
+            //if (instrument) printf("[slot] %d\t%d\t%f\n", i, partialWorksetSize, gpu_timer.elapsedMillis());
         }
 
 
@@ -216,6 +223,7 @@ void BFSGraph_gpu_topo(
     printf("GPU hashed bfs terminates\n");
     float billion_edges_per_second = (float)g.m / total_millis / 1000000.0;
     printf("Time(s):\t%f\nSpeed(BE/s):\t%f\n", total_millis / 1000.0, billion_edges_per_second);
+    printf("Accumulated Blocks: \t%d\n", accumulatedBlocks);
 
     levels.print_log();
 

@@ -57,14 +57,13 @@ struct NaiveHash {
         // Pinned and mapped in memory
         int flags = cudaHostAllocMapped;
 
-        for (int i = 0; i < slot_num; i++) {
-            if (util::handleError(cudaHostAlloc((void **)&slot_sizes, sizeof(SizeT) * slot_num, flags),
+        if (util::handleError(cudaHostAlloc((void **)&slot_sizes, sizeof(SizeT) * slot_num, flags),
                             "NaiveHash: cudaHostAlloc(elems) failed", __FILE__, __LINE__)) exit(1);
-            if (util::handleError(cudaHostAlloc((void **)&slot_offsets, sizeof(SizeT) * slot_num, flags),
+        if (util::handleError(cudaHostAlloc((void **)&slot_offsets, sizeof(SizeT) * slot_num, flags),
                             "NaiveHash: cudaHostAlloc(sizep) failed", __FILE__, __LINE__)) exit(1);
-            if (util::handleError(cudaHostAlloc((void **)&elems, sizeof(SizeT) * n, flags),
+        if (util::handleError(cudaHostAlloc((void **)&elems, sizeof(SizeT) * n, flags),
                             "NaiveHash: cudaHostAlloc(sizep) failed", __FILE__, __LINE__)) exit(1);
-        }
+        
 
         // initalize
         for (int i = 0; i < slot_num; i++) {

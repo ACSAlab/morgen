@@ -52,21 +52,20 @@ struct TopoHash {
         n = 0;
 
         for (int i = 0; i < slot_num; i++) {
-            slot_size_max[i] = stat.outDegreeLog[i];
-            n += stat.outDegreeLog[i];
+            slot_size_max[i] = stat.outDegreeLog[i+1];  // note outDegreeLog begins with 2^-1
+            n += stat.outDegreeLog[i+1];
         }
 
 
         // Pinned and mapped in memory
         int flags = cudaHostAllocMapped;
-        for (int i = 0; i < slot_num; i++) {
-            if (util::handleError(cudaHostAlloc((void **)&slot_sizes, sizeof(SizeT) * slot_num, flags),
-                            "NaiveHash: cudaHostAlloc(elems) failed", __FILE__, __LINE__)) exit(1);
-            if (util::handleError(cudaHostAlloc((void **)&slot_offsets, sizeof(SizeT) * slot_num, flags),
-                            "NaiveHash: cudaHostAlloc(sizep) failed", __FILE__, __LINE__)) exit(1);
-            if (util::handleError(cudaHostAlloc((void **)&elems, sizeof(SizeT) * n, flags),
-                            "NaiveHash: cudaHostAlloc(sizep) failed", __FILE__, __LINE__)) exit(1);
-        }
+        if (util::handleError(cudaHostAlloc((void **)&slot_sizes, sizeof(SizeT) * slot_num, flags),
+                            "TopoHash: cudaHostAlloc(elems) failed", __FILE__, __LINE__)) exit(1);
+        if (util::handleError(cudaHostAlloc((void **)&slot_offsets, sizeof(SizeT) * slot_num, flags),
+                            "TopoHash: cudaHostAlloc(sizep) failed", __FILE__, __LINE__)) exit(1);
+        if (util::handleError(cudaHostAlloc((void **)&elems, sizeof(SizeT) * n, flags),
+                            "TopoHash: cudaHostAlloc(sizep) failed", __FILE__, __LINE__)) exit(1);
+        
 
         // initalize
         SizeT cursor = 0;
@@ -78,11 +77,11 @@ struct TopoHash {
 
         // Get the device pointer
         if (util::handleError(cudaHostGetDevicePointer((void **) &d_elems, (void *) elems, 0),
-                        "NaiveHash: cudaHostGetDevicePointer(d_elems) failed", __FILE__, __LINE__)) exit(1);
+                        "TopoHash: cudaHostGetDevicePointer(d_elems) failed", __FILE__, __LINE__)) exit(1);
         if (util::handleError(cudaHostGetDevicePointer((void **) &d_slot_sizes, (void *) slot_sizes, 0),
-                        "NaiveHash: cudaHostGetDevicePointer(d_sizep) failed", __FILE__, __LINE__)) exit(1);
+                        "TopoHash: cudaHostGetDevicePointer(d_sizep) failed", __FILE__, __LINE__)) exit(1);
         if (util::handleError(cudaHostGetDevicePointer((void **) &d_slot_offsets, (void *) slot_offsets, 0),
-                        "NaiveHash: cudaHostGetDevicePointer(d_sizep) failed", __FILE__, __LINE__)) exit(1);
+                        "TopoHash: cudaHostGetDevicePointer(d_sizep) failed", __FILE__, __LINE__)) exit(1);
     }
 
 
@@ -104,17 +103,17 @@ struct TopoHash {
 
     void del() {
         if (elems) {
-            util::handleError(cudaFreeHost(elems), "NaiveHash: cudaFreeHost(elems) failed", __FILE__, __LINE__);
+            util::handleError(cudaFreeHost(elems), "TopoHash: cudaFreeHost(elems) failed", __FILE__, __LINE__);
             elems = NULL;
         }
 
         if (slot_sizes) {
-            util::handleError(cudaFreeHost(slot_sizes), "NaiveHash: cudaFreeHost(slot_sizes) failed", __FILE__, __LINE__);
+            util::handleError(cudaFreeHost(slot_sizes), "TopoHash: cudaFreeHost(slot_sizes) failed", __FILE__, __LINE__);
             slot_sizes = NULL;     
         }
 
         if (slot_offsets) {
-            util::handleError(cudaFreeHost(slot_offsets), "NaiveHash: cudaFreeHost(slot_offsets) failed", __FILE__, __LINE__);
+            util::handleError(cudaFreeHost(slot_offsets), "TopoHash: cudaFreeHost(slot_offsets) failed", __FILE__, __LINE__);
             slot_offsets = NULL;
         }
         

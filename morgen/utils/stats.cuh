@@ -40,7 +40,7 @@ struct Stats {
     Value max;
 
     void display() {
-
+        printf("%d\n", outDegreeMax);
         printf("[stat] Vertices:\t%lld\n[stat] Edges:\t%lld\n", (long long) vertices, (long long) edges);
         printf("[stat] Avg. Outdegree:\t%.1f\n", (float) totalDegree / vertices);
         printf("[stat] Quartiles:\t%d\t%d\t%d\t%d\t%d\n", min, quartile_first, median, quartile_second, max); 

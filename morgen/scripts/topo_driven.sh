@@ -2,6 +2,8 @@
 
 OUTDIR="topo"
 
+mkdir -p $OUTDIR
+
 for graph in mesh fla thermal eco audi copaper livejournal kkt amazon rmat2 random2
 do
 	echo ./bin/test $graph topo --intrument 
