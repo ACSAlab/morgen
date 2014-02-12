@@ -35,11 +35,10 @@ namespace bfs {
 
 
 
-template<
-    typename VertexId,
-    typename SizeT, 
-    typename Value,
-    bool ORDERED>
+template<typename VertexId,
+         typename SizeT, 
+         typename Value,
+         bool ORDERED>
 __global__ void
 BFSKernel_queue_thread_map(
     SizeT     *row_offsets,
@@ -62,7 +61,6 @@ BFSKernel_queue_thread_map(
         
         // read the who-am-I info from the workset
         VertexId outNode = worksetFrom[tid];
-
         SizeT outEdgeFirst = row_offsets[outNode];
         SizeT outEdgeLast = row_offsets[outNode+1];
 
@@ -103,11 +101,10 @@ BFSKernel_queue_thread_map(
  * iterate over them stridedly. e.g. thread 1 will process 1st, 33th, 65th... 
  * vertex in the neighbor list, thread 2 will process 2nd, 34th, 66th...
  */
-template<
-    typename VertexId, 
-    typename SizeT, 
-    typename Value,
-    bool ORDERED>
+template<typename VertexId, 
+         typename SizeT, 
+         typename Value,
+         bool ORDERED>
 __global__ void
 BFSKernel_queue_group_map(
     SizeT     *row_offsets,
@@ -155,7 +152,6 @@ BFSKernel_queue_group_map(
         if (group_offset == 0) {
 
             VertexId outNode = worksetFrom[g];
-            levels[outNode] = curLevel;
             edge_first[group_id % group_per_block] = row_offsets[outNode];
             edge_last[group_id % group_per_block] = row_offsets[outNode+1];
         }
@@ -170,11 +166,12 @@ BFSKernel_queue_group_map(
             
             VertexId inNode = column_indices[edge];
 
-            int old = atomicExch( (int*)&visited[inNode], 1 );
             Value level = curLevel + 1;
 
             if (ORDERED) {
+                int old = atomicExch( (int*)&visited[inNode], 1 );
                 if (old == 0) { 
+                    levels[inNode] = level;
                     SizeT pos= atomicAdd( (SizeT*) &(*sizeTo), 1 );
                     worksetTo[pos] = inNode;
                 } 
@@ -244,6 +241,10 @@ void BFSGraph_gpu_queue(
 
     while (worksetSize > 0) {
 
+        // kick off timer first
+        util::GpuTimer gpu_timer;
+        gpu_timer.start();
+
         lastWorksetSize = worksetSize;
 
         // spawn minimal(but enough) software blocks to cover the workset
@@ -254,9 +255,6 @@ void BFSGraph_gpu_queue(
         // safe belt: grid width has a limit of 65535
         if (blockNum > 65535) blockNum = 65535;
 
-        // kick off timer first
-        util::GpuTimer gpu_timer;
-        gpu_timer.start();
 
         if (warp_mapped) {
             if (unordered) {

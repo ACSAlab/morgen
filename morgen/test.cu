@@ -57,12 +57,13 @@ void usage() {
             "    eco: circuit theory applied to animal/gene flow\n"
             "    thermal: FEM 3D nonlinear thermal problem, 8-node bricks as volume elements\n"
             "    livejournal: LiveJournal's social network\n"
-            "<bfs type>\n"
             "\n"
+            "<bfs type>\n"
             "     serial: \n"
             "     queue: \n"
             "     hash: \n"
             "     bitmask: \n"
+            "     topo: topologically adaptive\n"
             "\n"
             "--outdegree=log|uniform\n"
             "    print out degrees of the graph in log or uniform style\n"
@@ -343,7 +344,9 @@ int main(int argc, char **argv) {
             ga,
             source, 
             stats,
-            instrument);
+            instrument,
+            block_size,
+            unordered);
 
     } else {
         fprintf(stderr, "no traverse type is specified. exit quietly\n");
