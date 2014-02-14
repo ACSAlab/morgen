@@ -58,6 +58,7 @@ BFSKernel_expand(SizeT     max_size,
             SizeT outEdgeFirst = row_offsets[tid];
             SizeT outEdgeLast = row_offsets[tid+1];
 
+            // serial expansion
             for (SizeT edge = outEdgeFirst; edge < outEdgeLast; edge++) {
 
                 VertexId inNode = column_indices[edge];

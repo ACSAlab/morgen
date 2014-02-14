@@ -56,7 +56,6 @@ struct TopoHash {
             n += stat.outDegreeLog[i+1];
         }
 
-
         // Pinned and mapped in memory
         int flags = cudaHostAllocMapped;
         if (util::handleError(cudaHostAlloc((void **)&slot_sizes, sizeof(SizeT) * slot_num, flags),
@@ -99,6 +98,14 @@ struct TopoHash {
             size += slot_sizes[i];
         }
         return size;
+    }
+
+    void info() {
+        printf("[thash] slot_num: %d\n", slot_num);
+        printf("[thash] n: %d\n", n);
+        for (int i = 0; i < slot_num; i++) {
+            printf("[thash] slot_size_max[%d]: %d\n", i, slot_size_max[i]);
+        }
     }
 
     void del() {

@@ -21,6 +21,7 @@
 #include <morgen/graph/gen/mine.cuh>
 #include <morgen/graph/gen/dimacs.cuh>
 #include <morgen/graph/gen/coo.cuh>
+#include <morgen/bfs/round_bitmask.cu>
 #include <morgen/bfs/bitmask.cu>
 #include <morgen/bfs/queue.cu>
 #include <morgen/bfs/hash.cu>
@@ -346,7 +347,16 @@ int main(int argc, char **argv) {
             stats,
             instrument,
             block_size,
-            unordered);
+            unordered);    
+
+    } else if (bfs_type == "round") {
+
+        bfs::BFSGraph_gpu_round_bitmask<VertexId, SizeT, Value>(
+            ga,
+            source, 
+            stats,
+            instrument,
+            block_size);
 
     } else {
         fprintf(stderr, "no traverse type is specified. exit quietly\n");
