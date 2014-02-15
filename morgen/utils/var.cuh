@@ -33,34 +33,29 @@ struct Var {
     Value  *elem;
     Value  *d_elem;      
 
-    Var(Value v = 0) { 
-        // Pinned and mapped in memory
-        int flags = cudaHostAllocMapped;
+    Var() { 
+        elem = (Value*) malloc( sizeof(Value) * 1);
+        if (util::handleError(cudaMalloc((void **) &d_elem, sizeof(Value) * 1),
+            "Var: cudaMalloc(d_elem) failed", __FILE__, __LINE__)) exit(1);
 
-        if (util::handleError(cudaHostAlloc((void **)&elem, sizeof(Value) * 1, flags),
-                               "var: cudaHostAlloc(elem) failed", __FILE__, __LINE__)) 
-            exit(1);
-
-        *elem = v;
-
-        // Get the device pointer
-        if (util::handleError(cudaHostGetDevicePointer((void **) &d_elem, (void *) elem, 0),
-                               "var: cudaHostGetDevicePointer(d_elem) failed", __FILE__, __LINE__))
-            exit(1);
     }
 
     Value getVal() {
+        if (util::handleError(cudaMemcpy(elem, d_elem, sizeof(Value) * 1, cudaMemcpyDeviceToHost), 
+            "Var: DeviceToHost(elem) failed", __FILE__, __LINE__)) exit(1);
         return *elem;
     }
 
     void set(Value v) {
         *elem = v;
+        if (util::handleError(cudaMemcpy(d_elem, elem, sizeof(Value) * 1, cudaMemcpyHostToDevice), 
+            "Var: hostToDevice(elem) failed", __FILE__, __LINE__)) exit(1);
     }
 
     void del() {
         if (elem) {
-            util::handleError(cudaFreeHost(elem), "var: cudaFreeHost(elem) failed", __FILE__, __LINE__);
-            elem = NULL;
+            util::handleError(cudaFree(d_elem), "var: cudaFree(elem) failed", __FILE__, __LINE__);
+            free(elem);
         }
 
     }

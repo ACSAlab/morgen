@@ -74,8 +74,7 @@ template<typename VertexId, typename SizeT, typename Value>
 void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
                      VertexId source,
                      bool instrument,
-                     bool display_distribution,
-                     bool display_workset)
+                     bool display_distribution)
 {
 
     // To make better use of the workset, we create two.
@@ -100,7 +99,7 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
     visited.all_to(0);
 
     // traverse from source node
-    workset[selector].append(source);   
+    workset[selector].init(source);   
     visited.set(source, 1);
     levels.set(source, 0);
     SizeT worksetSize = 1;
@@ -159,7 +158,6 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
             printf("\n");
         }
 
-        if (display_workset) workset[selector ^ 1].print();
 
         selector = selector ^ 1;
     }

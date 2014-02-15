@@ -144,7 +144,7 @@ BFSKernel_expand_group(
 
                 SizeT skip_edges = (mask-1) & edge_num;  // mask off the higher bits
 
-                if (skip_edges + mask == edgeLast) {  // which means its the last round of expansion
+                if (skip_edges + mask == edgeLast) {  // which means it's the last round of expansion
                     if (group_offset == 0) {
                         activated[g] = 0;
                     }
@@ -335,7 +335,7 @@ void BFSGraph_gpu_round_bitmask(
             // timer end
             gpu_timer.stop();
             level_millis += gpu_timer.elapsedMillis();
-            if (instrument) printf("[round]%d\t%f\n", i, gpu_timer.elapsedMillis());
+            if (instrument) printf("[round] %d\t%f\n", i, gpu_timer.elapsedMillis());
 
 
         }

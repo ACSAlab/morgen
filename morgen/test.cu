@@ -285,8 +285,7 @@ int main(int argc, char **argv) {
             ga,
             (VertexId) 0, 
             instrument, 
-            display_distribution,
-            display_workset);
+            display_distribution);
 
     if (display_metrics) util::displayUtilizingEfficiency(ga);
 
@@ -312,8 +311,7 @@ int main(int argc, char **argv) {
             ga, 
             source,
             instrument,
-            display_distribution,
-            display_workset);
+            display_distribution);
 
     } else if (bfs_type == "bitmask") {
 
@@ -331,8 +329,7 @@ int main(int argc, char **argv) {
             block_size,
             warp_mapped,
             group_size,
-            unordered,
-            display_workset);
+            unordered);
 
     } else if (bfs_type == "hash") {
 

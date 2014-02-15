@@ -16,6 +16,9 @@
  */
 
 
+#pragma once
+
+
 namespace morgen {
 
 namespace util {
@@ -56,8 +59,9 @@ int getLogOf(int outDegree) {
 	else if (outDegree > 16384 && outDegree <= 32768)
 		return 15;
 	else {
-		return -2;
 		fprintf(stderr, "[log] can't handle it.\n");
+		return -2;
+
 	}
 
 }

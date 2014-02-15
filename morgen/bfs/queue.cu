@@ -196,8 +196,7 @@ void BFSGraph_gpu_queue(
     int block_size,
     bool warp_mapped,
     int group_size,
-    bool unordered,
-    bool display_workset)
+    bool unordered)
 {
 
     // To make better use of the workset, we create two.
@@ -222,7 +221,7 @@ void BFSGraph_gpu_queue(
     visited.all_to(0);
 
     // traverse from source node
-    workset[0].append(source);   
+    workset[0].init(source);   
     levels.set(source, 0);
     visited.set(source, 1);
     SizeT worksetSize = 1;
@@ -232,7 +231,7 @@ void BFSGraph_gpu_queue(
     int accumulatedBlocks = 0;
 
     // kernel configuration
-    int blockNum = 16;
+    int blockNum;
     int mapping_factor = (warp_mapped) ? group_size : 1; 
     int group_per_block = block_size / group_size;
 
@@ -323,7 +322,8 @@ void BFSGraph_gpu_queue(
         gpu_timer.stop();
 
         if (instrument) printf("%d\t%d\t%d\t%f\n", curLevel, lastWorksetSize, blockNum, gpu_timer.elapsedMillis());        
-        if (display_workset) workset[selector ^ 1].print();
+
+
         total_milllis += gpu_timer.elapsedMillis();
         accumulatedBlocks += blockNum;
         curLevel += 1;

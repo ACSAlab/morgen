@@ -43,14 +43,11 @@ struct List
 
         n = _n;
 
-        // mapped & pinned
-        int flags = cudaHostAllocMapped;
-        if (util::handleError(cudaHostAlloc((void **)&elems, sizeof(Value) * n, flags),
-                               "List: cudaHostAlloc(elems) failed", __FILE__, __LINE__)) 
-            exit(1);
-        if (util::handleError(cudaHostGetDevicePointer((void **) &d_elems, (void *) elems, 0),
-                                "List: cudaHostGetDevicePointer(d_elems) failed", __FILE__, __LINE__))
-            exit(1);
+        elems = (Value*) malloc( sizeof(Value) * n);
+        if (util::handleError(cudaMalloc((void **) &d_elems, sizeof(Value) * n),
+            "List: cudaMalloc(d_elems) failed", __FILE__, __LINE__)) exit(1);
+
+
     }
 
     // setting to some value on CPU serially
@@ -58,16 +55,23 @@ struct List
         for (int i = 0; i < n; i++) {
             elems[i] = x;
         }
+
+        if (util::handleError(cudaMemcpy(d_elems, elems, sizeof(Value) * n, cudaMemcpyHostToDevice), 
+            "List: hostToDevice(elems) failed", __FILE__, __LINE__)) exit(1);
     }
 
     void print_log() {
+
+        if (util::handleError(cudaMemcpy(elems, d_elems, sizeof(Value) * 1, cudaMemcpyDeviceToHost), 
+            "List: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
+
         int inf_count = 0;
 
         FILE* log = fopen("log.txt", "w");
 
         for (int i = 0; i < n; i++) {
             if (elems[i] == MORGEN_INF)  inf_count++; 
-            fprintf(log, "%lld\n", (long long)elems[i]);
+            fprintf(log, "%lld\n", (long long) elems[i]);
         }
         fprintf(log, "\n");
 
@@ -75,19 +79,20 @@ struct List
 
     }
 
-    void print() {
-        for (int i = 0; i < n; i++) {
-            printf("%lld\n", (long long)elems[i]);
-        }
-    }
 
-    void set(SizeT i, Value x) { elems[i] = x; }
+    void set(SizeT i, Value x) {
+        elems[i] = x;
+        // just move on piece of data
+        if (util::handleError(cudaMemcpy(d_elems + i, elems + i, sizeof(Value) * 1, cudaMemcpyHostToDevice), 
+            "List: hostToDevice(elems) failed", __FILE__, __LINE__)) exit(1);
+    
+    }
 
 
     void del() {
         if (elems) {
-            util::handleError(cudaFreeHost(elems), "List: cudaFreeHost(elems) failed", __FILE__, __LINE__);
-            elems = NULL;
+            util::handleError(cudaFree(elems), "List: cudaFree(elems) failed", __FILE__, __LINE__);
+            free(elems);
         }
         n = 0;
     }

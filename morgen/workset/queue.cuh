@@ -41,67 +41,67 @@ struct Queue {
 
         n = _n;
     
-        // Pinned and mapped in memory
-        int flags = cudaHostAllocMapped;
-        if (util::handleError(cudaHostAlloc((void **)&elems, sizeof(SizeT) * n, flags),
-                               "Queue: cudaHostAlloc(elems) failed", __FILE__, __LINE__)) 
-            exit(1);
-        if (util::handleError(cudaHostAlloc((void **)&sizep, sizeof(SizeT) * 1, flags),
-                               "Queue: cudaHostAlloc(sizep) failed", __FILE__, __LINE__)) 
-            exit(1);
+        elems = (Value*) malloc( sizeof(Value) * n);
+        sizep = (SizeT*) malloc( sizeof(SizeT) * 1);
 
         *sizep = 0;
 
-        // Get the device pointer
-        if (util::handleError(cudaHostGetDevicePointer((void **) &d_elems, (void *) elems, 0),
-                               "Queue: cudaHostGetDevicePointer(d_elems) failed", __FILE__, __LINE__))
-            exit(1);
-        if (util::handleError(cudaHostGetDevicePointer((void **) &d_sizep, (void *) sizep, 0),
-                               "Queue: cudaHostGetDevicePointer(d_sizep) failed", __FILE__, __LINE__))
-            exit(1);
+        if (util::handleError(cudaMalloc((void **) &d_elems, sizeof(Value) * n),
+            "Queue: cudaMalloc(d_elems) failed", __FILE__, __LINE__)) exit(1);
+
+
+        if (util::handleError(cudaMalloc((void **) &d_sizep, sizeof(SizeT) * 1),
+            "Queue: cudaMalloc(d_sizep) failed", __FILE__, __LINE__)) exit(1);
 
     }
 
 
     /**
-     * A.K.A. enqueue
+     * A.K.A. enqueue a value
      */
-    int append(Value v) {
-        if (*sizep >= n)    // has been full
-            return -1;
-        else {
-            elems[*sizep] = v; 
-            *sizep += 1;
-            return 0;
-        }
+    void init(Value v) {
+
+        *sizep = 1;
+        elems[0] = v;
+
+        if (util::handleError(cudaMemcpy(d_elems, elems, sizeof(Value) * 1, cudaMemcpyHostToDevice), 
+            "List: hostToDevice(elems) failed", __FILE__, __LINE__)) exit(1);
+
+        if (util::handleError(cudaMemcpy(d_sizep, sizep, sizeof(SizeT) * 1, cudaMemcpyHostToDevice), 
+            "List: hostToDevice(sizep) failed", __FILE__, __LINE__)) exit(1);
+
     }
 
 
     int size() {
-        if (sizep)  return *sizep;
-        else        return -1;
+
+        if (util::handleError(cudaMemcpy(sizep, d_sizep, sizeof(SizeT) * 1, cudaMemcpyDeviceToHost), 
+            "List: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
+
+        return *sizep;
     }
 
+/*
     void print() {
         for (int i = 0; i < *sizep; i++) {
             printf("%lld\t", (long long)elems[i]);
         }
         printf("\n");
     }
-
+*/
 
 
     void del() {
         
         if (elems) {
-            util::handleError(cudaFreeHost(elems), "Queue: cudaFreeHost(elems) failed", __FILE__, __LINE__);
-            elems = NULL;
+            util::handleError(cudaFree(elems), "Queue: cudaFree(elems) failed", __FILE__, __LINE__);
+            free(elems);
 
         }
 
         if (sizep) {
-            util::handleError(cudaFreeHost(sizep), "Queue: cudaFreeHost(sizep) failed", __FILE__, __LINE__);
-            sizep = NULL;
+            util::handleError(cudaFree(sizep), "Queue: cudaFree(sizep) failed", __FILE__, __LINE__);
+            free(sizep);
         }
 
         n = 0;
