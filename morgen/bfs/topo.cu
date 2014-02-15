@@ -297,7 +297,10 @@ void BFSGraph_gpu_topo(
                 case 3: group_size = 8; break;
                 case 4: group_size = 16; break;
                 case 5: group_size = 32; break;
-                default: group_size = 32;
+                case 6: group_size = 64; break;
+                case 7: group_size = 128; break;
+                case 8: group_size = 256;break;
+                default: group_size = 256;
             }
 
             // will be used in the kernel

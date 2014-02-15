@@ -22,6 +22,7 @@
 #include <morgen/graph/gen/dimacs.cuh>
 #include <morgen/graph/gen/coo.cuh>
 #include <morgen/bfs/round_bitmask.cu>
+#include <morgen/bfs/round_queue.cu>
 #include <morgen/bfs/bitmask.cu>
 #include <morgen/bfs/queue.cu>
 #include <morgen/bfs/hash.cu>
@@ -65,6 +66,8 @@ void usage() {
             "     hash: \n"
             "     bitmask: \n"
             "     topo: topologically adaptive\n"
+            "     round_bitmask:\n"
+            "     round_queue:\n"
             "\n"
             "--outdegree=log|uniform\n"
             "    print out degrees of the graph in log or uniform style\n"
@@ -349,7 +352,7 @@ int main(int argc, char **argv) {
             block_size,
             unordered);    
 
-    } else if (bfs_type == "round") {
+    } else if (bfs_type == "round_bitmask") {
 
         bfs::BFSGraph_gpu_round_bitmask<VertexId, SizeT, Value>(
             ga,
@@ -357,6 +360,16 @@ int main(int argc, char **argv) {
             stats,
             instrument,
             block_size);
+
+    } else if (bfs_type == "round_queue") {
+
+        bfs::BFSGraph_gpu_round_queue<VertexId, SizeT, Value>(
+            ga,
+            source, 
+            stats,
+            instrument,
+            block_size,
+            unordered);
 
     } else {
         fprintf(stderr, "no traverse type is specified. exit quietly\n");
