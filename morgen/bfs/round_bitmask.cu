@@ -40,7 +40,7 @@ namespace bfs {
  */
 template<typename VertexId, typename SizeT, typename Value>
 __global__ void
-BFSKernel_expand_thread(
+BFSKernel_expand_single_thread(
     SizeT     max_size,
     SizeT     *row_offsets,
     VertexId  *column_indices,
@@ -48,8 +48,7 @@ BFSKernel_expand_thread(
     Value     curLevel,
     Value     *levels,
     int       *visited,
-    int       *update,
-    int       mask)
+    int       *update)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -58,19 +57,28 @@ BFSKernel_expand_thread(
 
         if (activated[tid] == 1) {
 
-            activated[tid] = 0; // in each iteration, a node is activated only once
 
             SizeT outEdgeFirst = row_offsets[tid];
             SizeT outEdgeLast = row_offsets[tid+1];
 
-            // serial expansion
-            for (SizeT edge = outEdgeFirst; edge < outEdgeLast; edge++) {
+            SizeT edge_num = outEdgeLast - outEdgeFirst;
 
-                VertexId inNode = column_indices[edge];
+            if (1 & edge_num != 0) { 
+
+
+                if (edge_num == 1) activated[tid] = 0;
+
+                // each threads only expand an edge 
+                VertexId inNode = column_indices[outEdgeFirst];  
+
                 if (visited[inNode] == 0) {
                     levels[inNode] = curLevel + 1;
                     update[inNode] = 1;
+
                 }
+
+
+
             }
         }
     }
@@ -115,6 +123,8 @@ BFSKernel_expand_group(
 
         if (activated[g] == 1) {  // neglect the inactivated node
 
+
+
             // #0 thread in group is in charge of fetching 
             if (group_offset == 0) {
                 edge_first[group_id % group_per_block] = row_offsets[g];
@@ -127,8 +137,12 @@ BFSKernel_expand_group(
             SizeT edgeLast = edge_last[group_id % group_per_block];
 
             SizeT edge_num = edgeLast - edgeFirst;
-            if (mask & edge_num != 0) {  // the certain round is activated
-                SizeT skip_edges = (~mask) & edge_num;  // mask off the higher bits
+
+
+            if ((mask & edge_num) != 0) {  // the certain round is activated
+
+
+                SizeT skip_edges = (mask-1) & edge_num;  // mask off the higher bits
 
                 if (skip_edges + mask == edgeLast) {  // which means its the last round of expansion
                     if (group_offset == 0) {
@@ -140,6 +154,8 @@ BFSKernel_expand_group(
                     VertexId inNode = column_indices[e];
                     levels[inNode] = curLevel + 1;
                     update[inNode] = 1;
+
+
                 }
             }
         }
@@ -172,6 +188,7 @@ BFSKernel_update_round(
             // as long as one thread try to set it false
             // the while loop will not be terminated 
             *terminate = 0; 
+
         }
     }
 }
@@ -234,14 +251,25 @@ void BFSGraph_gpu_round_bitmask(
             gpu_timer.start();
 
             int group_size = 0;
+            int mask = 0;
             switch (i) {
-                case 0: group_size = 1; break;
-                case 1: group_size = 2; break;
-                case 2: group_size = 4; break;
-                case 3: group_size = 8; break;
-                case 4: group_size = 16; break;
-                case 5: group_size = 32; break;
-                default: group_size = 32;
+                case 0: group_size = 1; mask = 1; break;
+                case 1: group_size = 2; mask = 2; break;
+                case 2: group_size = 4; mask = 4; break;
+                case 3: group_size = 8; mask = 8; break;
+                case 4: group_size = 16; mask = 16; break;
+                case 5: group_size = 32; mask = 32; break;
+                case 6: group_size = 32; mask = 64; break;
+                case 7: group_size = 32; mask = 128; break;
+                case 8: group_size = 32; mask = 256; break;
+                case 9: group_size = 32; mask = 512; break;
+                case 10: group_size = 32; mask = 1024; break;
+                case 11: group_size = 32; mask = 2048; break;
+                case 12: group_size = 32; mask = 4096; break;
+                case 13: group_size = 32; mask = 8192; break;
+                case 14: group_size = 32; mask = 16384; break;
+                case 15: group_size = 32; mask = 32768; break;
+                default: fprintf(stderr, "out of control!!\n"); return;
             }
 
 
@@ -258,7 +286,7 @@ void BFSGraph_gpu_round_bitmask(
             if (blockNum > 65535) blockNum = 65535;
 
             if (group_size == 1) {
-                BFSKernel_expand_thread<<<blockNum, block_size>>>(
+                BFSKernel_expand_single_thread<<<blockNum, block_size>>>(
                     g.n,
                     g.d_row_offsets,
                     g.d_column_indices,
@@ -266,8 +294,7 @@ void BFSGraph_gpu_round_bitmask(
                     curLevel,
                     levels.d_elems,             
                     visited.d_elems,
-                    update.d_elems,
-                    1);
+                    update.d_elems);
         
             } else {
                 BFSKernel_expand_group<<<blockNum, block_size>>>(
@@ -279,7 +306,7 @@ void BFSGraph_gpu_round_bitmask(
                     levels.d_elems,             
                     visited.d_elems,
                     update.d_elems,
-                    group_size,
+                    mask,
                     group_size,
                     group_per_block);
             }
@@ -307,7 +334,7 @@ void BFSGraph_gpu_round_bitmask(
 
             // timer end
             gpu_timer.stop();
-            level_millis= gpu_timer.elapsedMillis();
+            level_millis += gpu_timer.elapsedMillis();
             if (instrument) printf("[round]%d\t%f\n", i, gpu_timer.elapsedMillis());
 
 

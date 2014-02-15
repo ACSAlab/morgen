@@ -19,6 +19,9 @@
 #pragma once
 
 
+#include <morgen/utils/log.cuh>
+
+
 
 namespace morgen {
 
@@ -31,7 +34,7 @@ struct Stats {
     SizeT vertices;
     SizeT edges;
     SizeT outDegreeLog[32];
-    SizeT outDegreeMax;
+    SizeT outDegreeMax;      
     SizeT totalDegree;
     Value min;
     Value quartile_first;
@@ -44,9 +47,15 @@ struct Stats {
         printf("[stat] Vertices:\t%lld\n[stat] Edges:\t%lld\n", (long long) vertices, (long long) edges);
         printf("[stat] Avg. Outdegree:\t%.1f\n", (float) totalDegree / vertices);
         printf("[stat] Quartiles:\t%d\t%d\t%d\t%d\t%d\n", min, quartile_first, median, quartile_second, max); 
-        for (int i = -1; i < outDegreeMax; i++) {
-            int y = pow(2, i);
-            printf("[stat] Degree %d:\t%d\t%.2f%%\n", y, outDegreeLog[i+1], (float) outDegreeLog[i+1] * 100.0 / vertices);
+
+        // outDegreeLog[0]
+        printf("[stat] outDegreeLog[0]: 0\t%d\t%.2f%%\n", outDegreeLog[0], (float) outDegreeLog[0] * 100.0 / vertices);
+
+        // outDegreeLog[1] - outDegreeLog[max]
+        for (int i = 1; i <= outDegreeMax; i++) {
+            int high = pow(2, i-1);
+            int low = pow(2, i-2);
+            printf("[stat] outDegreeLog[%d]: (%d, %d]\t%d\t%.2f%%\n", i, low, high, outDegreeLog[i], (float) outDegreeLog[i] * 100.0 / vertices);
         }
     }
 
@@ -62,14 +71,19 @@ struct Stats {
         outDegreeMax = -1;
 
         for (SizeT i = 0; i < g.n; i++) {
-            SizeT outDegree = g.row_offsets[i+1] - g.row_offsets[i];            
-            int times = 0;
+            SizeT outDegree = g.row_offsets[i+1] - g.row_offsets[i];  
+
+            int times = getLogOf(outDegree) + 1;  // getLogOf(outDegree) can be -1
+            /*
             while (outDegree > 0) {
                 outDegree /= 2;  
                 times++;                
             }
+            */
+
             if (times > outDegreeMax) 
                 outDegreeMax = times;
+
             outDegreeLog[times]++;
         }
 

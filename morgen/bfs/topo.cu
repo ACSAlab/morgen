@@ -22,6 +22,7 @@
 #include <morgen/utils/macros.cuh>
 #include <morgen/utils/timing.cuh>
 #include <morgen/utils/list.cuh>
+#include <morgen/utils/log.cuh>
 #include <morgen/workset/topo_hash.cuh>
 
 #include <cuda_runtime_api.h>
@@ -213,18 +214,12 @@ void BFSGraph_gpu_topo(
     };
 
     // create a outdegree table first
-    // outdegree:     0  1  2-3  4-7  8-15  16-31
-    // altered       -1  0  1    2    3     4
-    // []
-    util::List<Value, SizeT> outdegrees(g.n);
+    // outdegree:     0  (0,1]  (1, 2]  (2, 4]   (4, 8]   (8, 16]
+    // altered       -1   0      1       2       3        4       
+    util::List<Value, SizeT> outdegreesLog(g.n);
     for (SizeT i = 0; i < g.n; i++) {
         SizeT outDegree = g.row_offsets[i+1] - g.row_offsets[i];
-        int times = 0;
-        while (outDegree > 0) {
-            outDegree /= 2;
-            times++;
-        }
-        outdegrees.elems[i] = times - 1;
+        outdegreesLog.elems[i] = util::getLogOf(outDegree);
     }
 
     // use to select between two worksets
@@ -330,7 +325,7 @@ void BFSGraph_gpu_topo(
                     levels.d_elems,
                     curLevel,     
                     visited.d_elems,
-                    outdegrees.d_elems);
+                    outdegreesLog.d_elems);
                 if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
             } else {
                 BFSKernel_topo_group_map<VertexId, SizeT, Value, true><<<blockNum, block_size>>>(
@@ -346,7 +341,7 @@ void BFSGraph_gpu_topo(
                     levels.d_elems,
                     curLevel,     
                     visited.d_elems,
-                    outdegrees.d_elems,
+                    outdegreesLog.d_elems,
                     group_size,
                     group_per_block);
 

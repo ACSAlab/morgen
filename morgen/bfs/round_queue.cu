@@ -249,7 +249,6 @@ void BFSGraph_gpu_round_queue(
 
         for (int i = 0; i < max_outdegree_log; i++) {
 
-                    // kick off timer first
             util::GpuTimer gpu_timer;
             gpu_timer.start();
 
@@ -340,7 +339,7 @@ void BFSGraph_gpu_round_queue(
             if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
             
             gpu_timer.stop();
-            level_millis= gpu_timer.elapsedMillis();
+            level_millis += gpu_timer.elapsedMillis();
             if (instrument) printf("[round]%d\t%f\n", i, gpu_timer.elapsedMillis());
 
         } // for
