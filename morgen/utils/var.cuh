@@ -60,9 +60,7 @@ struct Var {
 
     }
 
-    ~Var() {
-        del();
-    }
+
  };
 
 } // Utils

@@ -22,7 +22,7 @@
 #include <morgen/utils/macros.cuh>
 #include <morgen/utils/timing.cuh>
 #include <morgen/utils/list.cuh>
-#include <morgen/workset/naive_hash.cuh>
+#include <morgen/workset/hash.cuh>
 
 #include <cuda_runtime_api.h>
 
@@ -124,9 +124,9 @@ void BFSGraph_gpu_hash(
     // Instead of creating a new one everytime in each BFS level,
     // we just expand vertices from one to another
 
-    workset::NaiveHash<VertexId, SizeT>  workset[] = {
-        workset::NaiveHash<VertexId, SizeT>(g.n, slots),
-        workset::NaiveHash<VertexId, SizeT>(g.n, slots),
+    workset::Hash<VertexId, SizeT, Value>  workset[] = {
+        workset::Hash<VertexId, SizeT, Value>(g.n, slots),
+        workset::Hash<VertexId, SizeT, Value>(g.n, slots),
     };
 
     // use to select between two worksets

@@ -26,13 +26,14 @@
 #include <cuda_runtime_api.h>
 
 
-
-
-
 namespace morgen {
 
 namespace bfs {
 
+
+/* texture memory */
+texture<int> tex_row_offsets;
+texture<int> tex_column_indices;
 
 
 template<typename VertexId,
@@ -61,13 +62,19 @@ BFSKernel_queue_thread_map(
         
         // read the who-am-I info from the workset
         VertexId outNode = worksetFrom[tid];
-        SizeT outEdgeFirst = row_offsets[outNode];
-        SizeT outEdgeLast = row_offsets[outNode+1];
+
+        //SizeT outEdgeFirst = row_offsets[outNode];
+        SizeT outEdgeFirst = tex1Dfetch(tex_row_offsets, outNode);
+
+        //SizeT outEdgeLast = row_offsets[outNode+1];
+        SizeT outEdgeLast = tex1Dfetch(tex_row_offsets, outNode+1);
 
         // serial expansion
         for (SizeT edge = outEdgeFirst; edge < outEdgeLast; edge++) {
 
-            VertexId inNode = column_indices[edge];
+            //VertexId inNode = column_indices[edge];
+            VertexId inNode = tex1Dfetch(tex_column_indices, edge);
+
             Value level = curLevel + 1;
 
             if (ORDERED) {
@@ -224,6 +231,7 @@ void BFSGraph_gpu_queue(
     workset[0].init(source);   
     levels.set(source, 0);
     visited.set(source, 1);
+    
     SizeT worksetSize = 1;
     SizeT lastWorksetSize = 0;
     Value curLevel = 0;
@@ -237,6 +245,19 @@ void BFSGraph_gpu_queue(
 
     printf("GPU queued bfs starts... \n");  
     if (instrument) printf("level\tfrontier_size\tblock_num\ttime\n");
+
+
+    /*
+    * bind the graph in texture memory(1D)
+    */
+    if (util::handleError(cudaBindTexture(0, tex_column_indices, g.d_column_indices, sizeof(VertexId) * g.m), 
+        "CsrGraph: bindTexture(d_column_indices) failed", __FILE__, __LINE__)) exit(1);        
+
+    if (util::handleError(cudaBindTexture(0, tex_row_offsets, g.d_row_offsets, sizeof(SizeT) * (g.n + 1)), 
+        "CsrGraph: bindTexture(d_row_offsets) failed", __FILE__, __LINE__)) exit(1);
+        
+    printf("Done texture memory binding.\n");
+
 
     while (worksetSize > 0) {
 

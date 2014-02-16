@@ -47,24 +47,20 @@ struct CsrGraph {
     SizeT     n;
     SizeT     m;
 
-    /**
-     * Host pointers
-     */
+    /* Host pointer */
     SizeT     *row_offsets;
     VertexId  *column_indices;   // SOA instead of AOS 
 
-    /**
-     * Device pointers
-     */
+    /* Device pointers */
     SizeT     *d_row_offsets;
     VertexId  *d_column_indices;
+
 
 
     /**
      * Default constructor(do not allocate memory since the n/m is unknown)
      */
     CsrGraph() : n(0), m(0), row_offsets(NULL), column_indices(NULL), d_row_offsets(NULL), d_column_indices(NULL) {}
-
 
 
     void init(SizeT nodes, SizeT edges) {
@@ -78,18 +74,13 @@ struct CsrGraph {
     void initRow(SizeT nodes) {
         n = nodes;
 
-        // Allocated in the pinned memory
-        // NOTE: the graph is mapped to device memory as well, the pointer
-        // of which can be obtained by calling cudaHostGetDevicePointer()
+        row_offsets = (SizeT*) malloc ( sizeof(SizeT) * (n + 1));
 
-        int flags = cudaHostAllocMapped;
-        if (util::handleError(cudaHostAlloc((void **) &row_offsets, sizeof(SizeT) * (n + 1), flags),
-                               "CsrGraph: cudaHostAlloc(row_offsets) failed", __FILE__, __LINE__)) exit(1);
+        if (util::handleError(cudaMalloc((void **) &d_row_offsets, sizeof(SizeT) * (n + 1)),
+            "CsrGraph: cudaMalloc(d_row_offsets) failed", __FILE__, __LINE__)) exit(1);
 
-        // Get the device pointer
-        if (util::handleError(cudaHostGetDevicePointer((void **) &d_row_offsets, (void *) row_offsets, 0),
-                               "CsrGraph: cudaHostGetDevicePointer(d_row_offsets) failed", __FILE__, __LINE__)) exit(1);
     }
+
 
     /**
      * In CSR format, column_indices is relative to edge size
@@ -97,15 +88,11 @@ struct CsrGraph {
     void initColumn(SizeT edges) {
         m = edges;
         
-        // Allocated in the pinned memory
-        int flags = cudaHostAllocMapped;
-        if (util::handleError(cudaHostAlloc((void **) &column_indices, sizeof(VertexId) * m, flags),
-                               "CsrGraph: cudaHostAlloc(column_indices) failed", __FILE__, __LINE__)) exit(1);
-        
-        // Get the device pointer
-        if (util::handleError(cudaHostGetDevicePointer((void **) &d_column_indices, (void *) column_indices, 0),
-                               "CsrGraph: cudaHostGetDevicePointer(d_column_indices) failed", __FILE__, __LINE__)) exit(1);
-                   
+        column_indices = (VertexId*) malloc ( sizeof(VertexId) * m);
+
+        if (util::handleError(cudaMalloc((void **) &d_column_indices, sizeof(VertexId) * m),
+            "CsrGraph: cudaMalloc(d_column_indices) failed", __FILE__, __LINE__)) exit(1);
+
     }
 
 
@@ -122,7 +109,6 @@ struct CsrGraph {
         time_t mark1 = time(NULL);
 
         init(coo_nodes, coo_edges);
-
 
         typedef CooEdgeTuple<VertexId> tupleT;
         // if unordered, sort it first
@@ -152,48 +138,32 @@ struct CsrGraph {
         for (VertexId row = prev_row + 1; row <= n; row++) {
             row_offsets[row] = m;
         }
+
+
         time_t mark2 = time(NULL);
+
         printf("[g] Done converting (%ds).\n", (int) (mark2 - mark1));
     }
     
 
 
-    /**
-     * Count the outdegree of each node in uniform style
-     * and display it in the console 
-     */
-    void printOutDegreesUniform() {
-        
-        SizeT counts[30000] = {0};
-        SizeT max_degree = -1;
+    void transfer() {
+        printf("[g] Transfering graph from host memory to device memory...\n");
 
-        for (SizeT i = 0; i < n; i++) {
-            SizeT outDegree = row_offsets[i+1] - row_offsets[i];
-            if (outDegree > max_degree)
-                max_degree = outDegree;
-            counts[outDegree]++;
-        }
-        
-        if(max_degree < 16) {
-            for (int i = -1; i < max_degree; i++) {
-                printf("[g] Degree %d:\t%d\t%.2f%%\n", i+1, counts[i+1],
-                 (float) counts[i+1] * 100.0 / n);
-            }
-        } else {
-            // display loosely
-            int blank = max_degree / 16;
-            int print[17] = {0};
+        time_t mark1 = time(NULL);
 
-            for(int i = 0; i < 17; i++) {
-                for(int j = i * blank; j < (i+1) * blank && j <= max_degree; j++) {
-                    print[i] += counts[j];
-                }
-            }
-            for (int i = -1; i < 16; i++) {
-                printf("[g] Degree %d:\t%d\t%.2f%%\n", (i+1)*blank,
-                 print[i+1], (float) print[i+1] * 100.0 / n);
-            }
-        }
+
+        if (util::handleError(cudaMemcpy(d_column_indices, column_indices, sizeof(VertexId) * m, cudaMemcpyHostToDevice), 
+            "CsrGraph: hostToDevice(column_indices) failed", __FILE__, __LINE__)) exit(1);
+
+        if (util::handleError(cudaMemcpy(d_row_offsets, row_offsets, sizeof(SizeT) * (n + 1), cudaMemcpyHostToDevice), 
+            "CsrGraph: hostToDevice(row_offsets) failed", __FILE__, __LINE__)) exit(1);
+
+        time_t mark2 = time(NULL);
+
+        printf("[g] Done transfering (%ds).\n", (int) (mark2 - mark1));
+
+
     }
 
 
@@ -203,14 +173,14 @@ struct CsrGraph {
     void del() { 
         
         if (row_offsets) {
-            util::handleError(cudaFreeHost(row_offsets), "CsrGraph: cudaFreeHost(row_offsets) failed", __FILE__, __LINE__);
-            row_offsets = NULL;
+            util::handleError(cudaFree(d_row_offsets), "CsrGraph: cudaFree(d_row_offsets) failed", __FILE__, __LINE__);
+            free(row_offsets);
 
         }
 
         if (column_indices) {
-            util::handleError(cudaFreeHost(column_indices), "CsrGraph: cudaFreeHost(column_indices) failed", __FILE__, __LINE__);
-            column_indices   = NULL;
+            util::handleError(cudaFree(d_column_indices), "CsrGraph: cudaFree(d_column_indices) failed", __FILE__, __LINE__);
+            free(column_indices);
         }
         
         n = 0;
@@ -219,9 +189,6 @@ struct CsrGraph {
       }
 
 
-    ~CsrGraph() {
-        del();
-    }
 };
 
 

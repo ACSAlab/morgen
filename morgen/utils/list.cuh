@@ -44,6 +44,7 @@ struct List
         n = _n;
 
         elems = (Value*) malloc( sizeof(Value) * n);
+
         if (util::handleError(cudaMalloc((void **) &d_elems, sizeof(Value) * n),
             "List: cudaMalloc(d_elems) failed", __FILE__, __LINE__)) exit(1);
 
@@ -60,11 +61,23 @@ struct List
             "List: hostToDevice(elems) failed", __FILE__, __LINE__)) exit(1);
     }
 
-    void print_log() {
 
-        if (util::handleError(cudaMemcpy(elems, d_elems, sizeof(Value) * 1, cudaMemcpyDeviceToHost), 
-            "List: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
+    void set(SizeT i, Value x) {
+        elems[i] = x;
+        // just move on piece of data
+        if (util::handleError(cudaMemcpy(d_elems + i, elems + i, sizeof(Value) * 1, cudaMemcpyHostToDevice), 
+            "List: hostToDevice(elems) failed", __FILE__, __LINE__)) exit(1);
+    
+    }
 
+    void print_log(bool fromCPU = false) {
+
+        if (!fromCPU) {
+            if (util::handleError(cudaMemcpy(elems, d_elems, sizeof(Value) * n, cudaMemcpyDeviceToHost), 
+                "List: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
+
+        }
+    
         int inf_count = 0;
 
         FILE* log = fopen("log.txt", "w");
@@ -80,26 +93,18 @@ struct List
     }
 
 
-    void set(SizeT i, Value x) {
-        elems[i] = x;
-        // just move on piece of data
-        if (util::handleError(cudaMemcpy(d_elems + i, elems + i, sizeof(Value) * 1, cudaMemcpyHostToDevice), 
-            "List: hostToDevice(elems) failed", __FILE__, __LINE__)) exit(1);
-    
-    }
+
 
 
     void del() {
         if (elems) {
-            util::handleError(cudaFree(elems), "List: cudaFree(elems) failed", __FILE__, __LINE__);
+            util::handleError(cudaFree(d_elems), "List: cudaFree(d_elems) failed", __FILE__, __LINE__);
             free(elems);
         }
         n = 0;
     }
 
-    ~List() {
-        del();
-    }
+
 };
 
 

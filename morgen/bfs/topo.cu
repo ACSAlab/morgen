@@ -23,7 +23,7 @@
 #include <morgen/utils/timing.cuh>
 #include <morgen/utils/list.cuh>
 #include <morgen/utils/log.cuh>
-#include <morgen/workset/topo_hash.cuh>
+#include <morgen/workset/hash.cuh>
 
 #include <cuda_runtime_api.h>
 
@@ -208,9 +208,9 @@ void BFSGraph_gpu_topo(
     // To make better use of the workset, we create two.
     // Instead of creating a new one everytime in each BFS level,
     // we just expand vertices from one to another
-    workset::TopoHash<VertexId, SizeT, Value>  workset[] = {
-        workset::TopoHash<VertexId, SizeT, Value>(stats),
-        workset::TopoHash<VertexId, SizeT, Value>(stats),
+    workset::Hash<VertexId, SizeT, Value>  workset[] = {
+        workset::Hash<VertexId, SizeT, Value>(stats),
+        workset::Hash<VertexId, SizeT, Value>(stats),
     };
 
     // create a outdegree table first
@@ -252,9 +252,6 @@ void BFSGraph_gpu_topo(
     if (instrument) printf("level\tslot_size\tfrontier_size\tratio\ttime\n");
 
     float total_millis = 0.0;
-
-
-    workset[0].info();
 
 
     while (worksetSize > 0) {
@@ -355,7 +352,7 @@ void BFSGraph_gpu_topo(
         }
 
 
-        worksetSize = workset[selector ^ 1].total_size();
+        worksetSize = workset[selector ^ 1].sum_slot_size();
 
         // timer end
         total_millis += level_millis;

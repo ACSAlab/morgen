@@ -44,8 +44,6 @@ struct Queue {
         elems = (Value*) malloc( sizeof(Value) * n);
         sizep = (SizeT*) malloc( sizeof(SizeT) * 1);
 
-        *sizep = 0;
-
         if (util::handleError(cudaMalloc((void **) &d_elems, sizeof(Value) * n),
             "Queue: cudaMalloc(d_elems) failed", __FILE__, __LINE__)) exit(1);
 
@@ -94,13 +92,13 @@ struct Queue {
     void del() {
         
         if (elems) {
-            util::handleError(cudaFree(elems), "Queue: cudaFree(elems) failed", __FILE__, __LINE__);
+            util::handleError(cudaFree(d_elems), "Queue: cudaFree(elems) failed", __FILE__, __LINE__);
             free(elems);
 
         }
 
         if (sizep) {
-            util::handleError(cudaFree(sizep), "Queue: cudaFree(sizep) failed", __FILE__, __LINE__);
+            util::handleError(cudaFree(d_sizep), "Queue: cudaFree(sizep) failed", __FILE__, __LINE__);
             free(sizep);
         }
 
@@ -109,9 +107,7 @@ struct Queue {
     }
 
 
-    ~Queue() {
-        del();
-    }
+
  };
 
 

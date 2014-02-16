@@ -138,7 +138,7 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
             curLevel,     
             visited.elems);
 
-        worksetSize = workset[selector ^ 1].size();
+        worksetSize = *(workset[selector ^ 1].sizep);
 
         timer.stop();
 
@@ -168,7 +168,7 @@ void BFSGraph_serial(const graph::CsrGraph<VertexId, SizeT, Value> &g,
     printf("%d nodes has been visited\n", visitedNodes);
 
 
-    levels.print_log();
+    levels.print_log(true);
 
     levels.del();
     visited.del();
