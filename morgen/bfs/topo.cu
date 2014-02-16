@@ -348,7 +348,7 @@ void BFSGraph_gpu_topo(
             level_millis += gpu_timer.elapsedMillis();
             accumulatedBlocks += blockNum;
 
-            if (instrument) printf("\t[slot] %d\t%d\t%f\n", i, partialWorksetSize, gpu_timer.elapsedMillis());
+            //if (instrument) printf("\t[slot] %d\t%d\t%f\n", i, partialWorksetSize, gpu_timer.elapsedMillis());
         }
 
 

@@ -124,7 +124,6 @@ BFSKernel_expand_group(
         if (activated[g] == 1) {  // neglect the inactivated node
 
 
-
             // #0 thread in group is in charge of fetching 
             if (group_offset == 0) {
                 edge_first[group_id % group_per_block] = row_offsets[g];
