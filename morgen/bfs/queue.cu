@@ -32,8 +32,8 @@ namespace bfs {
 
 
 /* texture memory */
-texture<int> tex_row_offsets;
-texture<int> tex_column_indices;
+//texture<int> tex_row_offsets;
+//texture<int> tex_column_indices;
 
 
 template<typename VertexId,
@@ -63,17 +63,17 @@ BFSKernel_queue_thread_map(
         // read the who-am-I info from the workset
         VertexId outNode = worksetFrom[tid];
 
-        //SizeT outEdgeFirst = row_offsets[outNode];
-        SizeT outEdgeFirst = tex1Dfetch(tex_row_offsets, outNode);
+        SizeT outEdgeFirst = row_offsets[outNode];
+        //SizeT outEdgeFirst = tex1Dfetch(tex_row_offsets, outNode);
 
-        //SizeT outEdgeLast = row_offsets[outNode+1];
-        SizeT outEdgeLast = tex1Dfetch(tex_row_offsets, outNode+1);
+        SizeT outEdgeLast = row_offsets[outNode+1];
+        //SizeT outEdgeLast = tex1Dfetch(tex_row_offsets, outNode+1);
 
         // serial expansion
         for (SizeT edge = outEdgeFirst; edge < outEdgeLast; edge++) {
 
-            //VertexId inNode = column_indices[edge];
-            VertexId inNode = tex1Dfetch(tex_column_indices, edge);
+            VertexId inNode = column_indices[edge];
+            //VertexId inNode = tex1Dfetch(tex_column_indices, edge);
 
             Value level = curLevel + 1;
 
@@ -160,7 +160,11 @@ BFSKernel_queue_group_map(
 
             VertexId outNode = worksetFrom[g];
             edge_first[group_id % group_per_block] = row_offsets[outNode];
+            //edge_first[group_id % group_per_block] = tex1Dfetch(tex_row_offsets, outNode);
+
             edge_last[group_id % group_per_block] = row_offsets[outNode+1];
+            //edge_last[group_id % group_per_block] = tex1Dfetch(tex_row_offsets, outNode+1);
+
         }
 
         __syncthreads();
@@ -172,6 +176,7 @@ BFSKernel_queue_group_map(
         {
             
             VertexId inNode = column_indices[edge];
+            //VertexId inNode = tex1Dfetch(tex_column_indices, edge);
 
             Value level = curLevel + 1;
 
@@ -247,9 +252,10 @@ void BFSGraph_gpu_queue(
     if (instrument) printf("level\tfrontier_size\tblock_num\ttime\n");
 
 
-    /*
-    * bind the graph in texture memory(1D)
-    */
+    /* 
+
+    bind the graph in texture memory(1D)
+    
     if (util::handleError(cudaBindTexture(0, tex_column_indices, g.d_column_indices, sizeof(VertexId) * g.m), 
         "CsrGraph: bindTexture(d_column_indices) failed", __FILE__, __LINE__)) exit(1);        
 
@@ -258,6 +264,7 @@ void BFSGraph_gpu_queue(
         
     printf("Done texture memory binding.\n");
 
+    */
 
     while (worksetSize > 0) {
 

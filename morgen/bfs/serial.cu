@@ -53,15 +53,15 @@ BFSCore(SizeT     *row_offsets,
 
         for (SizeT edge = outEdgeFirst; edge < outEdgeLast; edge++) {
 
-                VertexId inNode = column_indices[edge];
+            VertexId inNode = column_indices[edge];
 
                 // if not visited, vistit it & append to the workset
-                if (visited[inNode] == 0) {
-                    levels[inNode] = curLevel + 1;
-                    visited[inNode] = 1;
-                    worksetTo[*sizeTo] = inNode;
-                    *sizeTo += 1;
-                }
+            if (visited[inNode] == 0) {
+                levels[inNode] = curLevel + 1;
+                visited[inNode] = 1;
+                worksetTo[*sizeTo] = inNode;
+                *sizeTo += 1;
+            }
         }
     }
 }

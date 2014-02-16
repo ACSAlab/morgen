@@ -64,39 +64,37 @@ BFSKernel_topo_thread_map(
 
         VertexId outNode = workset_from[slot_offsets_from[slot_id_from] + tid];
         SizeT outEdgeFirst = row_offsets[outNode];
-        SizeT outEdgeLast = row_offsets[outNode+1];
+        //SizeT outEdgeLast = row_offsets[outNode+1];
 
-            // serial expansion
-        for (SizeT edge = outEdgeFirst; edge < outEdgeLast; edge++) {
+        // only has to visit an edge
+        VertexId inNode = column_indices[outEdgeFirst];
+        Value level = curLevel + 1;
 
-            VertexId inNode = column_indices[edge];
-            Value level = curLevel + 1;
-
-            if (ORDERED) {
-                // resolve concurrent discovery through atomical operations
-                int old = atomicExch( (int*)&visited[inNode], 1 );
-                if (old == 0) { 
-                    levels[inNode] = curLevel + 1;
+        if (ORDERED) {
+            // resolve concurrent discovery through atomical operations
+            int old = atomicExch( (int*)&visited[inNode], 1 );
+            if (old == 0) { 
+                levels[inNode] = curLevel + 1;
                     // hash the pos by inNode id
-                    int hash = outdegrees[inNode];
+                int hash = outdegrees[inNode];
                     if (hash >= 0) { // ignore the 0-degree nodes
                         SizeT pos= atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
                         workset_to[slot_offsets_to[hash] + pos] = inNode;
 
                     }
                 }
-            } else {
-                if (levels[inNode] > level) {
-                    levels[inNode] = level;
-                    int hash = outdegrees[inNode];
-                    if (hash >= 0) { // ignore the 0-degree nodes
-                        SizeT pos= atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
-                        workset_to[slot_offsets_to[hash] + pos] = inNode;
-                    }
+        } else {
+            if (levels[inNode] > level) {
+                levels[inNode] = level;
+                int hash = outdegrees[inNode];
+                if (hash >= 0) { // ignore the 0-degree nodes
+                   SizeT pos= atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
+                    workset_to[slot_offsets_to[hash] + pos] = inNode;
                 }
             }
-        }   
-    }
+        }
+    }   
+    
     
 }
 
@@ -221,6 +219,8 @@ void BFSGraph_gpu_topo(
         SizeT outDegree = g.row_offsets[i+1] - g.row_offsets[i];
         outdegreesLog.elems[i] = util::getLogOf(outDegree);
     }
+    outdegreesLog.transfer();
+
 
     // use to select between two worksets
     // src:  workset[selector]
@@ -237,7 +237,7 @@ void BFSGraph_gpu_topo(
     visited.all_to(0);
 
     // traverse from source node
-    workset[0].insert(source);   
+    workset[0].insert(outdegreesLog.elems[source], source);   
     levels.set(source, 0);
     visited.set(source, 1);
     SizeT worksetSize = 1;
@@ -246,7 +246,7 @@ void BFSGraph_gpu_topo(
     int accumulatedBlocks = 0;
 
     // kernel configuration
-    int blockNum = 16;
+    int blockNum;
     printf("GPU topology-aware bfs starts... \n");  
 
     if (instrument) printf("level\tslot_size\tfrontier_size\tratio\ttime\n");
@@ -260,10 +260,7 @@ void BFSGraph_gpu_topo(
 
         float level_millis = 0.0;
 
-        // clear the next workset on CPU side
-        for (int i = 0; i < workset[selector ^ 1].slot_num; i++) {
-            workset[selector ^ 1].slot_sizes[i] = 0;
-        }
+        workset[selector ^ 1].clear_slot_sizes();
 
         // expand edges slot by slot
         // i:           0  1  2  3  4   5   6...

@@ -124,9 +124,8 @@ struct Hash {
             "Hash: hostToDevice(slot_offsets) failed", __FILE__, __LINE__)) exit(1);
     }
 
-    void insert(Value key) {
+    void insert(SizeT hash, Value key) {
 
-        SizeT hash = topo_hashed ? 0 : (key % slot_num);
   
         // get slot_size[hash]
         if (util::handleError(cudaMemcpy(slot_sizes + hash, d_slot_sizes + hash, sizeof(SizeT) * 1, cudaMemcpyDeviceToHost), 
@@ -178,6 +177,15 @@ struct Hash {
     }
 
 
+    void clear_slot_sizes() {
+        for (int i = 0; i < slot_num; i++) {
+            slot_sizes[i] = 0;
+        }
+
+        if (util::handleError(cudaMemcpy(d_slot_sizes, slot_sizes , sizeof(SizeT) * slot_num, cudaMemcpyHostToDevice), 
+            "Hash: HostToDevice(slot_sizes) failed", __FILE__, __LINE__)) exit(1);
+
+    }
 
     void del() {
         if (elems) {

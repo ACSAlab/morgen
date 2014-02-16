@@ -145,7 +145,7 @@ void BFSGraph_gpu_hash(
 
 
     // traverse from source node
-    workset[0].insert(source);   
+    workset[0].insert(source % slots, source);   
     levels.set(source, 0);
     visited.set(source, 1);
 
