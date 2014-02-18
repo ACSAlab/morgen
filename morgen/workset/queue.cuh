@@ -54,6 +54,12 @@ struct Queue {
     }
 
 
+    void transfer_back() {
+        if (util::handleError(cudaMemcpy(elems, d_elems, sizeof(Value) * n, cudaMemcpyDeviceToHost), 
+            "Queue: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
+    }
+
+
     /**
      * A.K.A. enqueue a value
      */

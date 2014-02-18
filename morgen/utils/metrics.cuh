@@ -20,7 +20,7 @@
 
 
 #include <morgen/utils/log.cuh>
-
+#include <math.h>
 
 
 namespace morgen {
@@ -34,69 +34,95 @@ struct Metrics {
     int dedicatedLanes;
     int intraWastedLanes;
     int interWastedLanes;
+    int utilizedLanes;
 
     Metrics() {
         dedicatedLanes = 0;
         interWastedLanes = 0;
         intraWastedLanes = 0;
+        utilizedLanes = 0;
     }
 
     void display() {
-        printf("[metric] dedicated:%d\n", dedicatedLanes);
-        printf("[metric] inter wasted:%d\n", interWastedLanes);
-        printf("[metric] intra wasted:%d\n", intraWastedLanes);
-        printf("[metric] URI: %.4f", (float) interWastedLanes / dedicatedLanes);
-        printf("[metric] URA: %.4f", (float) intraWastedLanes / dedicatedLanes);
-
+        printf("[metric] dedicated:\t%d\n", dedicatedLanes);
+        printf("[metric] utilized:\t%d\n", utilizedLanes);
+        printf("[metric] inter wasted:\t%d\n", interWastedLanes);
+        printf("[metric] intra wasted:\t%d\n", intraWastedLanes);
+        printf("[metric] URI\t: %.4f\n", (float) interWastedLanes / dedicatedLanes);
+        printf("[metric] URA\t: %.4f\n", (float) intraWastedLanes / dedicatedLanes);
+        printf("[metric] UR\t: %.4f\n", (float) utilizedLanes / dedicatedLanes);
     }
 
-    void count(const List<VertexId, SizeT, Value> &list,
+    void count(const VertexId* workset,
+               SizeT workset_size,
                const graph::CsrGraph<VertexId, SizeT, Value> &g,
                int group_size) 
     {
-        list.transfer_back();
+
+
+        int group_per_warp = 32 / group_size;
 
         int enlisted_warps;
-        if (*list.sizep % 32 == 0)
-            enlisted_warps = *list.sizep / 32;
+        if (workset_size % group_per_warp == 0)
+            enlisted_warps = workset_size / group_per_warp;
         else 
-            enlisted_warps = *list.sizep / 32 + 1;
+            enlisted_warps = workset_size / group_per_warp + 1;
 
         // which means the last warp could have threads
         // exceeding the list.elems[]'s bound
 
-        int group_per_warp = 32 / group_size;
 
         // go through the warps
         for (int i = 0; i < enlisted_warps; i++) {
 
-            int work_amount[32];
+            int work_amount[32] = {0};
             int max_work = 0;
-
 
             // go though the groups in each warp
             for (int j = 0; j < group_per_warp; j++) {
                 int index = i * group_per_warp + j;
 
                 // query of work amount of the node assign the group
-                if (index < *list.sizep) {
-                    VertexId node = list.elems[index];
+                if (index < workset_size) {
+                    VertexId node = workset[index];
                     SizeT start = g.row_offsets[node];
                     SizeT end = g.row_offsets[node+1];
                     SizeT edge_num = end - start;
                     work_amount[j] = edge_num;
+                    if (edge_num > max_work) max_work = edge_num;
+                    utilizedLanes += edge_num;
                 } else {  // out of bound
-                    max_work[j] = 0;
+                    work_amount[j] = 0;
                 }
-                if (edge_num > max_work) max_work = edge_num;
             }
 
+            /*
+            printf("warp: %d\n", i);
             for (int j = 0; j < group_per_warp; j++) {
-                interWastedLanes += ((max_work / group_size - work_amount[j] / group_size) * group_size);
-                intraWastedLanes += (group_size - work_amount[j] % group_size);
+                printf("%d  ", work_amount[j]);
             }
+            printf("\n\n");
+            */
+            for (int j = 0; j < group_per_warp; j++) {
 
-            dedicatedLanes += ((max_work / group_size) * group_size * group_per_warp );
+                int a = ((int) ceil( (float) max_work / group_size ) -
+                         (int) ceil( (float) work_amount[j] / group_size )
+                        ) * group_size;
+
+                int b;
+
+                if (work_amount[j] % group_size == 0) b = 0;
+                else b = group_size - work_amount[j] % group_size;
+
+                //printf("%d, %d\n", a, b);
+
+                interWastedLanes += a;
+                intraWastedLanes += b;
+
+            }
+            
+
+            dedicatedLanes += ( (int) ceil( (float) max_work / group_size ) * group_size * group_per_warp );
 
         }
     }

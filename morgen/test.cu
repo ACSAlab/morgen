@@ -295,8 +295,6 @@ int main(int argc, char **argv) {
             instrument, 
             display_distribution);
 
-    if (display_metrics) util::displayUtilizingEfficiency(ga);
-
 
     /*********************************************************************
      * Decide which node to start from
@@ -340,7 +338,8 @@ int main(int argc, char **argv) {
             block_size,
             warp_mapped,
             group_size,
-            unordered);
+            unordered,
+            display_metrics);
 
     } else if (bfs_type == "hash") {
 

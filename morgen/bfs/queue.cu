@@ -22,6 +22,7 @@
 #include <morgen/utils/macros.cuh>
 #include <morgen/utils/timing.cuh>
 #include <morgen/utils/list.cuh>
+#include <morgen/utils/metrics.cuh>
 #include <morgen/workset/queue.cuh>
 #include <cuda_runtime_api.h>
 
@@ -244,7 +245,7 @@ void BFSGraph_gpu_queue(
     if (instrument) printf("level\tfrontier_size\tblock_num\ttime\n");
 
 
-    util::Metrics metric;
+    util::Metrics<VertexId, SizeT, Value> metric;
 
     /* 
 
@@ -284,7 +285,10 @@ void BFSGraph_gpu_queue(
         if (warp_mapped) {
 
 
-            if (get_metrics) metric.count(workset[selector], g, group_size);
+            if (get_metrics) {
+                workset[selector].transfer_back();
+                metric.count(workset[selector].elems, workset[selector].size(), g, group_size);
+            }
 
             if (unordered) {
                 BFSKernel_queue_group_map<VertexId, SizeT, Value, false><<<blockNum, block_size>>>(
@@ -316,7 +320,11 @@ void BFSGraph_gpu_queue(
 
         } else { // thread map
 
-            if (get_metrics) metric.count(workset[selector], g, 1);
+
+            if (get_metrics) {
+                workset[selector].transfer_back();
+                metric.count(workset[selector].elems, workset[selector].size(), g, 1);
+            }
 
 
             if (unordered) {
@@ -382,7 +390,7 @@ void BFSGraph_gpu_queue(
     } // endwhile
 
 
-    metric.display();
+    if (get_metrics) metric.display();
 
     printf("GPU queued bfs terminates\n");  
     float billion_edges_per_second = (float)g.m / total_milllis / 1000000.0;
