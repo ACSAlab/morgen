@@ -27,6 +27,7 @@
 #include <morgen/bfs/queue.cu>
 #include <morgen/bfs/hash.cu>
 #include <morgen/bfs/topo.cu>
+#include <morgen/bfs/smart.cu>
 #include <morgen/bfs/serial.cu>
 #include <morgen/utils/stats.cuh>
 #include <morgen/utils/command_line.cuh>
@@ -325,7 +326,10 @@ int main(int argc, char **argv) {
         bfs::BFSGraph_gpu_bitmask<VertexId, SizeT, Value>(
             ga,
             source,
-            instrument);
+            instrument,
+            block_size,
+            warp_mapped,
+            group_size);
 
     } else if (bfs_type == "queue") {
 
@@ -349,6 +353,16 @@ int main(int argc, char **argv) {
     } else if (bfs_type == "topo") {
 
         bfs::BFSGraph_gpu_topo<VertexId, SizeT, Value>(
+            ga,
+            source, 
+            stats,
+            instrument,
+            block_size,
+            unordered); 
+
+    } else if (bfs_type == "smart") {
+
+        bfs::BFSGraph_gpu_smart<VertexId, SizeT, Value>(
             ga,
             source, 
             stats,

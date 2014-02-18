@@ -39,16 +39,17 @@ namespace bfs {
  */
 template<typename VertexId, typename SizeT, typename Value>
 __global__ void
-BFSKernel_expand(SizeT     max_size,
-                 SizeT     *row_offsets,
-                 VertexId  *column_indices,
-                 int       *activated,
-                 Value     *levels,
-                 int       *visited,
-                 int       *update)
+BFSKernel_expand_single(
+  SizeT     max_size,
+  SizeT     *row_offsets,
+  VertexId  *column_indices,
+  int       *activated,
+  Value     *levels,
+  Value     curLevel,
+  int       *visited,
+  int       *update)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
-
 
     if (tid < max_size) {
 
@@ -63,7 +64,51 @@ BFSKernel_expand(SizeT     max_size,
 
                 VertexId inNode = column_indices[edge];
                 if (visited[inNode] == 0) {
-                    levels[inNode] = levels[tid] + 1;
+                    levels[inNode] = curLevel + 1;
+                    update[inNode] = 1;
+                }
+            }
+        }
+    }
+}
+
+
+
+template<typename VertexId, typename SizeT, typename Value>
+__global__ void
+BFSKernel_expand_group(
+    SizeT     max_size,
+    SizeT     *row_offsets,
+    VertexId  *column_indices,
+    int       *activated,
+    Value     *levels,
+    Value     curLevel,
+    int       *visited,
+    int       *update,
+    int       group_size,
+    float     group_per_block)
+{
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    int group_offset = tid % group_size;
+    int group_id     = tid / group_size;
+
+    for (int g = group_id; g < max_size; g += group_per_block * gridDim.x) {
+
+
+        if (activated[g] == 1) {
+
+            activated[g] = 0;     // wakeup only once
+            SizeT outEdgeFirst = row_offsets[g];
+            SizeT outEdgeLast = row_offsets[g+1];
+
+            // serial expansion
+            for (SizeT edge = outEdgeFirst + group_offset; edge < outEdgeLast; edge += group_size) {
+
+                VertexId inNode = column_indices[edge];
+
+                if (visited[inNode] == 0) {
+                    levels[inNode] = curLevel + 1;
                     update[inNode] = 1;
                 }
             }
@@ -107,7 +152,10 @@ template<typename VertexId, typename SizeT, typename Value>
 void BFSGraph_gpu_bitmask(
     const graph::CsrGraph<VertexId, SizeT, Value> &g,
     VertexId source,
-    bool instrument = false)
+    bool instrument,
+    int block_size,
+    bool warp_mapped,
+    int group_size)
 {
 
     // use a list to represent bitmask
@@ -135,13 +183,16 @@ void BFSGraph_gpu_bitmask(
     Value curLevel = 0;
 
 
-    // kernel configuration
-    int blockSize = 256;
     // spawn as many threads as the vertices in the graph
-    int blockNum = (g.n % blockSize == 0 ? 
-        g.n / blockSize :
-        g.n / blockSize + 1);
+    int mapping_factor = (warp_mapped) ? group_size : 1; 
+    float group_per_block = (float)block_size / group_size;
 
+    int blockNum = (g.n * mapping_factor % block_size == 0 ? 
+        g.n * mapping_factor / block_size :
+        g.n * mapping_factor / block_size + 1);
+
+    // safe belt: grid width has a limit of 65535
+    if (blockNum > 65535) blockNum = 65535;
 
     printf("GPU bitmasked bfs starts... \n");   
     if (instrument) printf("level\ttime\n");
@@ -159,22 +210,41 @@ void BFSGraph_gpu_bitmask(
         util::GpuTimer gpu_timer;
         gpu_timer.start();
 
-        BFSKernel_expand<<<blockNum, blockSize>>>(g.n,
-                                                  g.d_row_offsets,
-                                                  g.d_column_indices,
-                                                  activated.d_elems,
-                                                  levels.d_elems,             
-                                                  visited.d_elems,
-                                                  update.d_elems);
+        if (group_size == 1) {
+            BFSKernel_expand_single<<<blockNum, block_size>>>(
+                g.n,
+                g.d_row_offsets,
+                g.d_column_indices,
+                activated.d_elems,
+                levels.d_elems,
+                curLevel,             
+                visited.d_elems,
+                update.d_elems);
+        } else {
+            BFSKernel_expand_group<<<blockNum, block_size>>>(
+                g.n,
+                g.d_row_offsets,
+                g.d_column_indices,
+                activated.d_elems,
+                levels.d_elems,
+                curLevel,             
+                visited.d_elems,
+                update.d_elems,
+                group_size,
+                group_per_block);
+        }
+
         if (util::handleError(cudaThreadSynchronize(), "BFSKernel_expand failed ", __FILE__, __LINE__)) break;
 
-        BFSKernel_update<<<blockNum, blockSize>>>(g.n,
-                                                  g.d_row_offsets,
-                                                  g.d_column_indices,
-                                                  activated.d_elems,
-                                                  visited.d_elems,
-                                                  update.d_elems,     
-                                                  terminate.d_elem);
+        BFSKernel_update<<<blockNum, block_size>>>(
+            g.n,
+            g.d_row_offsets,
+            g.d_column_indices,
+            activated.d_elems,
+            visited.d_elems,
+            update.d_elems,     
+            terminate.d_elem);
+        
         if (util::handleError(cudaThreadSynchronize(), "BFSKernel_update failed ", __FILE__, __LINE__)) break;
 
 

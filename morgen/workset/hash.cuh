@@ -56,6 +56,17 @@ struct Hash {
             slot_size_max[i] = stat.outDegreeLog[i+1];  // note outDegreeLog begins with 2^-1
             n += stat.outDegreeLog[i+1];
         }
+
+        // cut the slot into 5(32 min)
+        if (slot_num > 6) {
+            int traits = 0;
+            for (int i = 6; i < slot_num; i++) {
+                traits += slot_size_max[i];
+            }
+            slot_num = 6;
+            slot_size_max[5] += traits;
+        }
+
         printf("[hash] slot_num: %d\n", slot_num);
         printf("[hash] n: %d\n", n);
         for (int i = 0; i < slot_num; i++) {
@@ -74,6 +85,8 @@ struct Hash {
             slot_offsets[i] = cursor;
             cursor += slot_size_max[i];
         }
+
+
 
         topo_hashed = true;
 

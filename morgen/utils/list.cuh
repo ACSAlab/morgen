@@ -56,6 +56,12 @@ struct List
             "List: hostToDevice(elems) failed", __FILE__, __LINE__)) exit(1);
     }
 
+
+    void transfer_back() {
+        if (util::handleError(cudaMemcpy(elems, d_elems, sizeof(Value) * n, cudaMemcpyDeviceToHost), 
+            "List: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
+    }
+
     // setting to some value on CPU serially
     void all_to(Value x) {
         for (int i = 0; i < n; i++) {

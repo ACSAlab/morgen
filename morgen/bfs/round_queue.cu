@@ -267,7 +267,7 @@ void BFSGraph_gpu_round_queue(
             int group_per_block = block_size / group_size;
 
 
-                    // spawn minimal(but enough) software blocks to cover the workset
+            // spawn minimal(but enough) software blocks to cover the workset
             blockNum = (worksetSize * group_size % block_size == 0 ? 
                 worksetSize * group_size / block_size :
                 worksetSize * group_size / block_size + 1);

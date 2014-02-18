@@ -63,18 +63,25 @@ struct Queue {
         elems[0] = v;
 
         if (util::handleError(cudaMemcpy(d_elems, elems, sizeof(Value) * 1, cudaMemcpyHostToDevice), 
-            "List: hostToDevice(elems) failed", __FILE__, __LINE__)) exit(1);
+            "Queue: hostToDevice(elems) failed", __FILE__, __LINE__)) exit(1);
 
         if (util::handleError(cudaMemcpy(d_sizep, sizep, sizeof(SizeT) * 1, cudaMemcpyHostToDevice), 
-            "List: hostToDevice(sizep) failed", __FILE__, __LINE__)) exit(1);
+            "Queue: hostToDevice(sizep) failed", __FILE__, __LINE__)) exit(1);
 
     }
 
 
+    void clear_size() {
+
+        *sizep = 0;
+        if (util::handleError(cudaMemcpy(d_sizep, sizep, sizeof(SizeT) * 1, cudaMemcpyHostToDevice), 
+            "Queue: hostToDevice(sizep) failed", __FILE__, __LINE__)) exit(1);
+    }
+
     int size() {
 
         if (util::handleError(cudaMemcpy(sizep, d_sizep, sizeof(SizeT) * 1, cudaMemcpyDeviceToHost), 
-            "List: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
+            "Queue: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
 
         return *sizep;
     }

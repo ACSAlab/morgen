@@ -42,20 +42,17 @@ template<typename VertexId,
          typename Value,
          bool ORDERED>
 __global__ void
-BFSKernel_topo_thread_map(
+BFSKernel_smart_thread_map(
   SizeT     *row_offsets,
   VertexId  *column_indices,
   VertexId  *workset_from,
   SizeT     *slot_offsets_from,
   SizeT     *slot_sizes_from,
   int       slot_id_from,
-  VertexId  *workset_to,
-  SizeT     *slot_offsets_to,
-  VertexId  *slot_sizes_to,
   Value     *levels,
   Value     curLevel,
   int       *visited,
-  int       *outdegrees)
+  int       *update)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -66,33 +63,21 @@ BFSKernel_topo_thread_map(
         SizeT outEdgeFirst = row_offsets[outNode];
         SizeT outEdgeLast = row_offsets[outNode+1];
 
-
         for (SizeT e = outEdgeFirst; e < outEdgeLast; e++) {
             VertexId inNode = column_indices[e];
             Value level = curLevel + 1;
 
             if (ORDERED) {
-                int old = atomicExch( (int*)&visited[inNode], 1 );
-                if (old == 0) { 
+                if (visited[inNode] == 0) {
                     levels[inNode] = level;
-                    int hash = outdegrees[inNode];
-                    if (hash >= 0) { 
-                        SizeT pos= atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
-                        workset_to[slot_offsets_to[hash] + pos] = inNode;
-                    }
+                    update[inNode] = 1;
                 }
             } else {
-
                 if (levels[inNode] > level) {
                     levels[inNode] = level;
-                    int hash = outdegrees[inNode];
-                    if (hash >= 0) { 
-                       SizeT pos= atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
-                       workset_to[slot_offsets_to[hash] + pos] = inNode;
-                   }
-               }
-
-           }
+                    update[inNode] = 1;
+                }
+            }
 
        }
     }   
@@ -102,34 +87,29 @@ BFSKernel_topo_thread_map(
 
 
 
-
 template<typename VertexId, 
          typename SizeT, 
          typename Value,
          bool ORDERED>
 __global__ void
-BFSKernel_topo_group_map(
+BFSKernel_smart_group_map(
   SizeT     *row_offsets,
   VertexId  *column_indices,
   VertexId  *workset_from,
   SizeT     *slot_offsets_from,
   SizeT     *slot_sizes_from,
   int       slot_id_from,
-  VertexId  *workset_to,
-  SizeT     *slot_offsets_to,
-  VertexId  *slot_sizes_to,
   Value     *levels,
   Value     curLevel,
   int       *visited,
-  int       *outdegrees,
   int       group_size,
-  float     group_per_block)
+  float     group_per_block,
+  int       *update)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
     int group_offset = tid % group_size;
     int group_id     = tid / group_size;
-
 
 
     // group_per_block * gridDim.x = how many groups of threads are spawned 
@@ -147,40 +127,59 @@ BFSKernel_topo_group_map(
             Value level = curLevel + 1;
 
             if (ORDERED) {
-                int old = atomicExch( (int*)&visited[inNode], 1 );
-                if (old == 0) { 
+                if (visited[inNode] == 0) {
                     levels[inNode] = level;
-                    // hash the pos by inNode id
-                    int hash = outdegrees[inNode];
-                    if (hash >= 0) { // ignore the 0-degree nodes(whose value = -1)
-                        SizeT pos = atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
-                        workset_to[slot_offsets_to[hash] + pos] = inNode;
-                        //printf("I am thread %d of group %d, I am writing node %d to slot %d @ (%d, %d)",
-                        //        tid, group_id, inNode, hash, slot_offsets_to[hash], pos);
-                    }
+                    update[inNode] = 1;
                 }
             } else {
                 if (levels[inNode] > level) {
                     levels[inNode] = level;
-                    int hash = outdegrees[inNode];
-                    if (hash >= 0) { // ignore the 0-degree nodes
-                        SizeT pos= atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
-                        workset_to[slot_offsets_to[hash] + pos] = inNode;
-                    }
+                    update[inNode] = 1;
                 }
             }
         } // edge loop
-
     }
-    
+}
+
+
+/**
+ * use update[] to mask activated[]
+ */
+template<typename VertexId, typename SizeT>
+__global__ void
+BFSKernel_smart_gen_workset(
+    SizeT     max_size,
+    SizeT     *row_offsets,
+    VertexId  *column_indices,
+    int       *visited,
+    int       *update,
+    int       *outdegrees,
+    VertexId  *workset_to,
+    SizeT     *slot_offsets_to,
+    VertexId  *slot_sizes_to)
+{
+    int tid =  blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (tid < max_size) {
+
+        if (update[tid] == 1) {
+
+            update[tid] = 0;     // clear after activating
+            visited[tid] = 1;
+
+            int hash = outdegrees[tid];
+            if (hash >= 0) {
+                SizeT pos = atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
+                workset_to[slot_offsets_to[hash] + pos] = tid;
+            }
+        }
+    }
 }
 
 
 
-
-
 template<typename VertexId, typename SizeT, typename Value>
-void BFSGraph_gpu_topo(
+void BFSGraph_gpu_smart(
     const graph::CsrGraph<VertexId, SizeT, Value> &g, 
     VertexId source, 
     const util::Stats<VertexId, SizeT, Value> &stats,
@@ -197,6 +196,10 @@ void BFSGraph_gpu_topo(
         workset::Hash<VertexId, SizeT, Value>(stats),
         workset::Hash<VertexId, SizeT, Value>(stats),
     };
+
+
+
+
 
     // create a outdegree table first
     // outdegree:     0  (0,1]  (1, 2]  (2, 4]   (4, 8]   (8, 16]
@@ -221,7 +224,6 @@ void BFSGraph_gpu_topo(
     }
     outdegreesLog.transfer();
 
-
     // use to select between two worksets
     // src:  workset[selector]
     // dest: workset[selector ^ 1]
@@ -231,10 +233,13 @@ void BFSGraph_gpu_topo(
     util::List<Value, SizeT> levels(g.n);
     levels.all_to((Value) MORGEN_INF);
 
-
     // visitation list: 0 for unvisited
     util::List<int, SizeT> visited(g.n);
     visited.all_to(0);
+
+    util::List<int, SizeT> update(g.n);
+    update.all_to(0);
+
 
     // traverse from source node
     workset[0].insert(outdegreesLog.elems[source], source);   
@@ -243,14 +248,12 @@ void BFSGraph_gpu_topo(
     SizeT worksetSize = 1;
     SizeT lastWorksetSize = 0;
     Value curLevel = 0;
-    int accumulatedBlocks = 0;
+    //int accumulatedBlocks = 0;
 
-    // kernel configuration
-    int blockNum;
+
     printf("GPU topology-aware bfs starts... \n");  
 
     if (instrument) printf("level\tslot_size\tfrontier_size\tratio\ttime\n");
-
     float total_millis = 0.0;
 
 
@@ -258,7 +261,9 @@ void BFSGraph_gpu_topo(
 
         lastWorksetSize = worksetSize;
 
-        float level_millis = 0.0;
+        // kick off timer first
+        util::GpuTimer gpu_timer;
+        gpu_timer.start();
 
         workset[selector ^ 1].clear_slot_sizes();
 
@@ -267,15 +272,12 @@ void BFSGraph_gpu_topo(
         // group_size:  1  2  4  8  16  32  32
         for (int i = 0; i < workset[selector].slot_num; i++) {
 
-            // kick off timer first
-            util::GpuTimer gpu_timer;
-            gpu_timer.start();
+ 
 
             int partialWorksetSize = workset[selector].slot_sizes[i];
 
             // skip the empty slot
             if (partialWorksetSize== 0) continue;
-
 
             // decide which mapping strategy to be used according to i
             int group_size = 0;
@@ -307,7 +309,7 @@ void BFSGraph_gpu_topo(
 
             // In hashed version,  the worksetSize is the logical size
             // of the hash table(smallest among the slot sizes)
-            blockNum = ((partialWorksetSize * group_size) % block_size == 0 ? 
+            int blockNum = ((partialWorksetSize * group_size) % block_size == 0 ? 
                 partialWorksetSize * group_size / block_size :
                 partialWorksetSize * group_size / block_size + 1);
 
@@ -316,63 +318,84 @@ void BFSGraph_gpu_topo(
 
 
             if (group_size == 1) {
-                BFSKernel_topo_thread_map<VertexId, SizeT, Value, true><<<blockNum, block_size>>>(
+
+                BFSKernel_smart_thread_map<VertexId, SizeT, Value, true><<<blockNum, block_size>>>(
                     g.d_row_offsets,
                     g.d_column_indices,
                     workset[selector].d_elems,
                     workset[selector].d_slot_offsets,
                     workset[selector].d_slot_sizes,
                     i,                                    
-                    workset[selector ^ 1].d_elems,
-                    workset[selector ^ 1].d_slot_offsets,
-                    workset[selector ^ 1].d_slot_sizes,
                     levels.d_elems,
                     curLevel,     
                     visited.d_elems,
-                    outdegreesLog.d_elems);
+                    update.d_elems);
+
                 if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
+
             } else {
-                BFSKernel_topo_group_map<VertexId, SizeT, Value, true><<<blockNum, block_size>>>(
+
+                BFSKernel_smart_group_map<VertexId, SizeT, Value, true><<<blockNum, block_size>>>(
                     g.d_row_offsets,
                     g.d_column_indices,
                     workset[selector].d_elems,
                     workset[selector].d_slot_offsets,
                     workset[selector].d_slot_sizes,
                     i,                                    
-                    workset[selector ^ 1].d_elems,
-                    workset[selector ^ 1].d_slot_offsets,
-                    workset[selector ^ 1].d_slot_sizes,
                     levels.d_elems,
                     curLevel,     
                     visited.d_elems,
-                    outdegreesLog.d_elems,
                     group_size,
-                    group_per_block);
+                    group_per_block,
+                    update.d_elems);
 
                 if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
             }
-            gpu_timer.stop();
-            level_millis += gpu_timer.elapsedMillis();
-            accumulatedBlocks += blockNum;
 
             //if (instrument) printf("\t[slot] %d\t%d\t%f\n", i, partialWorksetSize, gpu_timer.elapsedMillis());
         }
 
+        int blockNum = (g.n % block_size == 0) ? 
+            (g.n / block_size) :
+            (g.n / block_size + 1);
+        if (blockNum > 65535) blockNum = 65535;
 
+        // generate the next workset according to update[]
+        BFSKernel_smart_gen_workset<<<blockNum, block_size>>> (
+            g.n,
+            g.d_row_offsets,
+            g.d_column_indices,
+            visited.d_elems,
+            update.d_elems,
+            outdegreesLog.d_elems,
+            workset[selector ^ 1].d_elems,
+            workset[selector ^ 1].d_slot_offsets,
+            workset[selector ^ 1].d_slot_sizes);
+            
+        if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
+
+
+        // get the new workset size
         worksetSize = workset[selector ^ 1].sum_slot_size();
 
-        // timer end
+        
+        gpu_timer.stop();
+        float level_millis = gpu_timer.elapsedMillis();
         total_millis += level_millis;
+
         if (instrument) printf("%d\t%d\t%f\n", curLevel, lastWorksetSize, level_millis);
 
+
         curLevel += 1;
+
+        // swap the queue
         selector = selector ^ 1;
     }
     
     printf("GPU hashed bfs terminates\n");
     float billion_edges_per_second = (float)g.m / total_millis / 1000000.0;
     printf("Time(s):\t%f\nSpeed(BE/s):\t%f\n", total_millis / 1000.0, billion_edges_per_second);
-    printf("Accumulated Blocks: \t%d\n", accumulatedBlocks);
+    //printf("Accumulated Blocks: \t%d\n", accumulatedBlocks);
 
     levels.print_log();
 
