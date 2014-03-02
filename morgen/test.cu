@@ -94,6 +94,7 @@ void usage() {
             "--slots=<number of slots>\n"
             "--block_size=<block size>\n"
             "--group_size=<group size>\n"
+            "--threshold=<threshold>"
             "\n");
 }
 
@@ -150,8 +151,9 @@ int main(int argc, char **argv) {
     bool instrument = args.CheckCmdLineFlag("instrument");
     printf("Instrument?\t\t%s\n", (instrument ? "Yes" : "No"));
 
-    bool unordered = args.CheckCmdLineFlag("unordered");
-    printf("Unordered?\t\t%s\n", (unordered ? "Yes" : "No"));
+
+    bool quiet = args.CheckCmdLineFlag("quiet");
+
 
     VertexId source = 0;
     std::string src_str;
@@ -173,9 +175,14 @@ int main(int argc, char **argv) {
     args.GetCmdLineArgument("block_size", block_size);
     printf("BLock size(threads):\t%d\n", block_size);
 
-    int group_size = 32;
+    int group_size = 0;
     args.GetCmdLineArgument("group_size", group_size);
     printf("Group size(threads):\t%d\n", group_size);
+
+    int threshold = 0;
+    args.GetCmdLineArgument("threshold", threshold);
+    printf("Threshold:\t%d\n", threshold);
+
 
 
     graph::CsrGraph<VertexId, SizeT, Value> ga;
@@ -308,6 +315,8 @@ int main(int argc, char **argv) {
     printf("Traversing from %d\n", source);    
 
 
+    for (int i=0; i<10; i++) {
+
     /*********************************************************************
      * Traversing
      *********************************************************************/
@@ -338,7 +347,6 @@ int main(int argc, char **argv) {
             block_size,
             warp_mapped,
             group_size,
-            unordered,
             display_metrics);
 
     } else if (bfs_type == "hash") {
@@ -357,7 +365,9 @@ int main(int argc, char **argv) {
             stats,
             instrument,
             block_size,
-            unordered); 
+            display_metrics,
+            group_size,
+            threshold); 
 
     } else if (bfs_type == "smart") {
 
@@ -366,8 +376,7 @@ int main(int argc, char **argv) {
             source, 
             stats,
             instrument,
-            block_size,
-            unordered);    
+            block_size);    
 
     } else if (bfs_type == "round_bitmask") {
 
@@ -385,13 +394,14 @@ int main(int argc, char **argv) {
             source, 
             stats,
             instrument,
-            block_size,
-            unordered);
+            block_size);
 
     } else {
         fprintf(stderr, "no traverse type is specified. exit quietly\n");
     }
+        if (quiet) break;
 
+    } // for-loop
 
     fclose(fp);
     ga.del();

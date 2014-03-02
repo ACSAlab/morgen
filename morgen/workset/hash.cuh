@@ -57,7 +57,8 @@ struct Hash {
             n += stat.outDegreeLog[i+1];
         }
 
-        // cut the slot into 5(32 min)
+        
+        // cut the slots
         if (slot_num > 6) {
             int traits = 0;
             for (int i = 6; i < slot_num; i++) {
@@ -66,6 +67,7 @@ struct Hash {
             slot_num = 6;
             slot_size_max[5] += traits;
         }
+    
 
         printf("[hash] slot_num: %d\n", slot_num);
         printf("[hash] n: %d\n", n);
@@ -137,12 +139,22 @@ struct Hash {
             "Hash: hostToDevice(slot_offsets) failed", __FILE__, __LINE__)) exit(1);
     }
 
+
+    void transfer_back() {
+        if (util::handleError(cudaMemcpy(elems, d_elems, sizeof(Value) * n, cudaMemcpyDeviceToHost), 
+            "Hash: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
+        if (util::handleError(cudaMemcpy(slot_offsets, d_slot_offsets, sizeof(Value) * slot_num, cudaMemcpyDeviceToHost), 
+            "Hash: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
+        if (util::handleError(cudaMemcpy(slot_sizes, d_slot_sizes, sizeof(Value) * slot_num, cudaMemcpyDeviceToHost), 
+            "Hash: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
+    }
+
     void insert(SizeT hash, Value key) {
 
   
         // get slot_size[hash]
         if (util::handleError(cudaMemcpy(slot_sizes + hash, d_slot_sizes + hash, sizeof(SizeT) * 1, cudaMemcpyDeviceToHost), 
-            "List: DeviceToHost(slot_sizes) failed", __FILE__, __LINE__)) exit(1);
+            "Hash: DeviceToHost(slot_sizes) failed", __FILE__, __LINE__)) exit(1);
 
         // get old value then increase
         SizeT old_size = slot_sizes[hash];
@@ -150,7 +162,7 @@ struct Hash {
 
         // update slot_size[hash]
         if (util::handleError(cudaMemcpy(d_slot_sizes + hash, slot_sizes + hash, sizeof(SizeT) * 1, cudaMemcpyHostToDevice), 
-            "NaiveHash: hostToDevice(slot_offsets) failed", __FILE__, __LINE__)) exit(1);
+            "Hash: hostToDevice(slot_offsets) failed", __FILE__, __LINE__)) exit(1);
 
         // slot_offsets won't change
         SizeT pos = slot_offsets[hash] + old_size;
@@ -158,7 +170,7 @@ struct Hash {
 
         // write element
         if (util::handleError(cudaMemcpy(d_elems + pos, elems + pos, sizeof(Value) * 1, cudaMemcpyHostToDevice), 
-            "NaiveHash: hostToDevice(elems) failed", __FILE__, __LINE__)) exit(1);
+            "Hash: hostToDevice(elems) failed", __FILE__, __LINE__)) exit(1);
 
     }
 

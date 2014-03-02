@@ -39,8 +39,7 @@ namespace bfs {
 
 template<typename VertexId,
          typename SizeT, 
-         typename Value,
-         bool ORDERED>
+         typename Value>
 __global__ void
 BFSKernel_queue_thread_map(
     SizeT     *row_offsets,
@@ -70,19 +69,14 @@ BFSKernel_queue_thread_map(
 
             VertexId inNode = column_indices[edge];
             //VertexId inNode = tex1Dfetch(tex_column_indices, edge);
-            Value level = curLevel + 1;
 
-            if (ORDERED) {
-                if (visited[inNode] == 0) {
-                    levels[inNode] = level;
-                    update[inNode] = 1;
-                }
-            } else {
-                if (levels[inNode] > level) {
-                    levels[inNode] = level;     // relax
-                    update[inNode] = 1;
-                }
+
+
+            if (levels[inNode] == MORGEN_INF) {
+                levels[inNode] = curLevel + 1;
+                update[inNode] = 1;
             }
+
         }   
     }
 }
@@ -102,8 +96,7 @@ BFSKernel_queue_thread_map(
  */
 template<typename VertexId, 
          typename SizeT, 
-         typename Value,
-         bool ORDERED>
+         typename Value>
 __global__ void
 BFSKernel_queue_group_map(
     SizeT     *row_offsets,
@@ -140,20 +133,12 @@ BFSKernel_queue_group_map(
             VertexId inNode = column_indices[edge];
             //VertexId inNode = tex1Dfetch(tex_column_indices, edge);
 
-            Value level = curLevel + 1;
 
-            
-            if (ORDERED) {
-                if (visited[inNode] == 0) {
-                    levels[inNode] = level;
-                    update[inNode] = 1;
-                }
-            } else {
-                if (levels[inNode] > level) {
-                    levels[inNode] = level;     // relax
-                    update[inNode] = 1;
-                }
+            if (levels[inNode] == MORGEN_INF) {
+                levels[inNode] = curLevel + 1;
+                update[inNode] = 1;
             }
+
         }
     }
 }
@@ -198,22 +183,13 @@ void BFSGraph_gpu_queue(
     int block_size,
     bool warp_mapped,
     int group_size,
-    bool unordered,
     bool get_metrics)
 {
 
     // To make better use of the workset, we create two.
     // Instead of creating a new one everytime in each BFS level,
     // we just expand vertices from one to another
-    workset::Queue<VertexId, SizeT>  workset[] = {
-        workset::Queue<VertexId, SizeT>(g.n),
-        workset::Queue<VertexId, SizeT>(g.n),
-    };
-
-    // use to select between two worksets
-    // src:  workset[selector]
-    // dest: workset[selector ^ 1]
-    int selector = 0;
+    workset::Queue<VertexId, SizeT>  workset(g.n);
 
     // Initalize auxiliary list
     util::List<Value, SizeT> levels(g.n);
@@ -227,15 +203,20 @@ void BFSGraph_gpu_queue(
     update.all_to(0);
 
     // traverse from source node
-    workset[0].init(source);   
+    workset.init(source);   
     levels.set(source, 0);
     visited.set(source, 1);
     
     SizeT worksetSize = 1;
     SizeT lastWorksetSize = 0;
     Value curLevel = 0;
-    float total_milllis = 0.0;
-    int accumulatedBlocks = 0;
+
+
+    float total_millis = 0.0;
+    float expand_millis = 0.0;
+    float compact_millis = 0.0;
+
+    //int accumulatedBlocks = 0;
 
     // kernel configuration
     int mapping_factor = (warp_mapped) ? group_size : 1; 
@@ -261,15 +242,31 @@ void BFSGraph_gpu_queue(
 
     */
 
+
+    util::GpuTimer gpu_timer;
+    util::GpuTimer expand_timer;
+    util::GpuTimer compact_timer;
+
+
+    gpu_timer.start();
+
+
     while (worksetSize > 0) {
 
+
+
         // kick off timer first
-        util::GpuTimer gpu_timer;
-        gpu_timer.start();
+        if (instrument) {
+            expand_timer.start();
+        }
+
+        // kick off timer first
+        //util::GpuTimer gpu_timer;
+        //gpu_timer.start();
 
         lastWorksetSize = worksetSize;
 
-        workset[selector ^ 1].clear_size();
+        
 
         // spawn minimal(but enough) software blocks to cover the workset
         int blockNum = (worksetSize * mapping_factor % block_size == 0 ? 
@@ -286,74 +283,51 @@ void BFSGraph_gpu_queue(
 
 
             if (get_metrics) {
-                workset[selector].transfer_back();
-                metric.count(workset[selector].elems, workset[selector].size(), g, group_size);
+                workset.transfer_back();
+                metric.count(workset.elems, workset.size(), g, group_size);
             }
 
-            if (unordered) {
-                BFSKernel_queue_group_map<VertexId, SizeT, Value, false><<<blockNum, block_size>>>(
-                    g.d_row_offsets,
-                    g.d_column_indices,
-                    workset[selector].d_elems,
-                    workset[selector].d_sizep,
-                    levels.d_elems,
-                    curLevel,     
-                    visited.d_elems,
-                    group_size,
-                    group_per_block,
-                    update.d_elems);
+            BFSKernel_queue_group_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
+                g.d_row_offsets,
+                g.d_column_indices,
+                workset.d_elems,
+                workset.d_sizep,
+                levels.d_elems,
+                curLevel,     
+                visited.d_elems,
+                group_size,
+                group_per_block,
+                update.d_elems);
 
-            } else {
-                // unorderd
-                BFSKernel_queue_group_map<VertexId, SizeT, Value, true><<<blockNum, block_size>>>(
-                    g.d_row_offsets,
-                    g.d_column_indices,
-                    workset[selector].d_elems,
-                    workset[selector].d_sizep,
-                    levels.d_elems,
-                    curLevel,     
-                    visited.d_elems,
-                    group_size,
-                    group_per_block,
-                    update.d_elems);
-            }
 
         } else { // thread map
 
 
             if (get_metrics) {
-                workset[selector].transfer_back();
-                metric.count(workset[selector].elems, workset[selector].size(), g, 1);
+                workset.transfer_back();
+                metric.count(workset.elems, workset.size(), g, 1);
             }
 
+            BFSKernel_queue_thread_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
+                g.d_row_offsets,                                        
+                g.d_column_indices,
+                workset.d_elems,
+                workset.d_sizep,
+                levels.d_elems,
+                curLevel,     
+                visited.d_elems,
+                update.d_elems);
 
-            if (unordered) {
-                BFSKernel_queue_thread_map<VertexId, SizeT, Value, false><<<blockNum, block_size>>>(
-                    g.d_row_offsets,                                        
-                    g.d_column_indices,
-                    workset[selector].d_elems,
-                    workset[selector].d_sizep,
-                    levels.d_elems,
-                    curLevel,     
-                    visited.d_elems,
-                    update.d_elems);
-
-            } else {
-                // unordered
-                BFSKernel_queue_thread_map<VertexId, SizeT, Value, true><<<blockNum, block_size>>>(
-                    g.d_row_offsets,                                        
-                    g.d_column_indices,
-                    workset[selector].d_elems,
-                    workset[selector].d_sizep,
-                    levels.d_elems,
-                    curLevel,     
-                    visited.d_elems,
-                    update.d_elems);
-            }
         }
 
+        if (instrument) {
+            expand_timer.stop();
+            expand_millis += expand_timer.elapsedMillis();
+            compact_timer.start();
+        }      
 
-        gpu_timer.stop(); // only counting the expanding time
+
+        workset.clear_size();
 
 
         if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
@@ -363,6 +337,7 @@ void BFSGraph_gpu_queue(
             (g.n / block_size + 1);
         if (blockNum > 65535) blockNum = 65535;
 
+  
         // generate the next workset according to update[]
         BFSKernel_queue_gen_workset<<<blockNum, block_size>>> (
             g.n,
@@ -370,39 +345,43 @@ void BFSGraph_gpu_queue(
             g.d_column_indices,
             visited.d_elems,
             update.d_elems,
-            workset[selector ^ 1].d_elems,
-            workset[selector ^ 1].d_sizep);
+            workset.d_elems,
+            workset.d_sizep);
 
         if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
 
-        worksetSize = workset[selector ^ 1].size();
+        worksetSize = workset.size();
 
 
-        if (instrument) printf("%d\t%d\t%d\t%f\n", curLevel, lastWorksetSize, blockNum, gpu_timer.elapsedMillis());        
+        if (instrument) {
+            compact_timer.stop();
+            compact_millis += compact_timer.elapsedMillis();
+            printf("%d\t%d\t%f\t%f\n", curLevel, lastWorksetSize, expand_timer.elapsedMillis(), compact_timer.elapsedMillis());
+        }
 
-
-        total_milllis += gpu_timer.elapsedMillis();
-        accumulatedBlocks += blockNum;
         curLevel += 1;
-        selector = selector ^ 1;
 
     } // endwhile
 
 
+    gpu_timer.stop();
+    total_millis = gpu_timer.elapsedMillis();
+
     if (get_metrics) metric.display();
 
     printf("GPU queued bfs terminates\n");  
-    float billion_edges_per_second = (float)g.m / total_milllis / 1000000.0;
-    printf("Time(s):\t%f\nSpeed(BE/s):\t%f\n", total_milllis / 1000.0, billion_edges_per_second);
-    printf("Accumulated Blocks: \t%d\n", accumulatedBlocks);
+    float billion_edges_per_second = (float)g.m / total_millis / 1000000.0;
+    printf("Time(s):\t%f\nSpeed(BE/s):\t%f\n", total_millis / 1000.0, billion_edges_per_second);
+    //printf("Accumulated Blocks: \t%d\n", accumulatedBlocks);
+    if (instrument) printf("Expand: %f\t%f\n", expand_millis / 1000.0, compact_millis / 1000.0);
 
     levels.print_log();
 
     levels.del();
     visited.del();
-    workset[0].del();
-    workset[1].del();
+    update.del();
+    workset.del();
     
 }
 

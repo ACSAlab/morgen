@@ -39,8 +39,7 @@ namespace bfs {
  */
 template<typename VertexId, 
          typename SizeT,
-         typename Value,
-         bool ORDERED>
+         typename Value>
 __global__ void
 BFSKernel_smart_thread_map(
   SizeT     *row_offsets,
@@ -65,20 +64,11 @@ BFSKernel_smart_thread_map(
 
         for (SizeT e = outEdgeFirst; e < outEdgeLast; e++) {
             VertexId inNode = column_indices[e];
-            Value level = curLevel + 1;
 
-            if (ORDERED) {
-                if (visited[inNode] == 0) {
-                    levels[inNode] = level;
-                    update[inNode] = 1;
-                }
-            } else {
-                if (levels[inNode] > level) {
-                    levels[inNode] = level;
-                    update[inNode] = 1;
-                }
+            if (levels[inNode] == MORGEN_INF) {
+                levels[inNode] = curLevel + 1;
+                update[inNode] = 1;
             }
-
        }
     }   
     
@@ -89,8 +79,7 @@ BFSKernel_smart_thread_map(
 
 template<typename VertexId, 
          typename SizeT, 
-         typename Value,
-         bool ORDERED>
+         typename Value>
 __global__ void
 BFSKernel_smart_group_map(
   SizeT     *row_offsets,
@@ -126,17 +115,11 @@ BFSKernel_smart_group_map(
             VertexId inNode = column_indices[edge];
             Value level = curLevel + 1;
 
-            if (ORDERED) {
-                if (visited[inNode] == 0) {
-                    levels[inNode] = level;
-                    update[inNode] = 1;
-                }
-            } else {
-                if (levels[inNode] > level) {
-                    levels[inNode] = level;
-                    update[inNode] = 1;
-                }
+            if (levels[inNode] == MORGEN_INF) {
+                levels[inNode] = level;
+                update[inNode] = 1;
             }
+   
         } // edge loop
     }
 }
@@ -184,8 +167,7 @@ void BFSGraph_gpu_smart(
     VertexId source, 
     const util::Stats<VertexId, SizeT, Value> &stats,
     bool instrument,
-    int block_size,
-    bool unordered)
+    int block_size)
 {
 
 
@@ -319,7 +301,7 @@ void BFSGraph_gpu_smart(
 
             if (group_size == 1) {
 
-                BFSKernel_smart_thread_map<VertexId, SizeT, Value, true><<<blockNum, block_size>>>(
+                BFSKernel_smart_thread_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
                     g.d_row_offsets,
                     g.d_column_indices,
                     workset[selector].d_elems,
@@ -335,7 +317,7 @@ void BFSGraph_gpu_smart(
 
             } else {
 
-                BFSKernel_smart_group_map<VertexId, SizeT, Value, true><<<blockNum, block_size>>>(
+                BFSKernel_smart_group_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
                     g.d_row_offsets,
                     g.d_column_indices,
                     workset[selector].d_elems,

@@ -36,8 +36,7 @@ namespace bfs {
 
 template<typename VertexId,
          typename SizeT, 
-         typename Value,
-         bool ORDERED>
+         typename Value>
 __global__ void
 BFSKernel_round_queue_thread_map(
     SizeT     *row_offsets,
@@ -67,22 +66,14 @@ BFSKernel_round_queue_thread_map(
         for (SizeT edge = outEdgeFirst; edge < outEdgeLast; edge++) {
 
             VertexId inNode = column_indices[edge];
-            Value level = curLevel + 1;
 
-            if (ORDERED) {
-                int old = atomicExch( (int*)&visited[inNode], 1 );
-                if (old == 0) { 
-                    levels[inNode] = level;
-                    SizeT pos= atomicAdd( (SizeT*) &(*sizeTo), 1 );
-                    worksetTo[pos] = inNode;
-                }
-            } else {
-                if (levels[inNode] > level) {
-                    levels[inNode] = level;     // relax
-                    SizeT pos= atomicAdd( (SizeT*) &(*sizeTo), 1 );
-                    worksetTo[pos] = inNode;
-                }
+            int old = atomicExch( (int*)&visited[inNode], 1 );
+            if (old == 0) { 
+                levels[inNode] = curLevel + 1;
+                SizeT pos= atomicAdd( (SizeT*) &(*sizeTo), 1 );
+                worksetTo[pos] = inNode;
             }
+
         }   
     }
 }
@@ -101,8 +92,7 @@ BFSKernel_round_queue_thread_map(
  */
 template<typename VertexId, 
          typename SizeT, 
-         typename Value,
-         bool ORDERED>
+         typename Value>
 __global__ void
 BFSKernel_round_queue_group_map(
     SizeT     *row_offsets,
@@ -164,22 +154,13 @@ BFSKernel_round_queue_group_map(
             for (int e = edgeFirst + skip_edges + group_offset; e < edgeLast; e += group_size) {
                 
                 VertexId inNode = column_indices[e];
-                Value level = curLevel + 1;
+                int old = atomicExch( (int*)&visited[inNode], 1 );
+                if (old == 0) { 
+                    levels[inNode] = curLevel + 1;
+                    SizeT pos= atomicAdd( (SizeT*) &(*sizeTo), 1 );
+                    worksetTo[pos] = inNode;
+                } 
 
-                if (ORDERED) {
-                    int old = atomicExch( (int*)&visited[inNode], 1 );
-                    if (old == 0) { 
-                        levels[inNode] = level;
-                        SizeT pos= atomicAdd( (SizeT*) &(*sizeTo), 1 );
-                        worksetTo[pos] = inNode;
-                    } 
-                } else {
-                    if (levels[inNode] > level) {
-                        levels[inNode] = level;
-                        SizeT pos= atomicAdd( (SizeT*) &(*sizeTo), 1 );
-                        worksetTo[pos] = inNode;
-                    }
-                } // if else 
             }
 
         }
@@ -195,8 +176,7 @@ void BFSGraph_gpu_round_queue(
     VertexId source,
     const util::Stats<VertexId, SizeT, Value> &stats,
     bool instrument,
-    int block_size,
-    bool unordered)
+    int block_size)
 {
 
     // To make better use of the workset, we create two.
@@ -277,63 +257,33 @@ void BFSGraph_gpu_round_queue(
 
             if (group_size == 1) {
 
-                if (unordered) {
-                    BFSKernel_round_queue_thread_map<VertexId, SizeT, Value, false><<<blockNum, block_size>>>(
-                        g.d_row_offsets,                                        
-                        g.d_column_indices,
-                        workset[selector].d_elems,
-                        workset[selector].d_sizep,
-                        workset[selector ^ 1].d_elems,
-                        workset[selector ^ 1].d_sizep,
-                        levels.d_elems,
-                        curLevel,     
-                        visited.d_elems);
+                BFSKernel_round_queue_thread_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
+                    g.d_row_offsets,                                        
+                    g.d_column_indices,
+                    workset[selector].d_elems,
+                    workset[selector].d_sizep,
+                    workset[selector ^ 1].d_elems,
+                    workset[selector ^ 1].d_sizep,
+                    levels.d_elems,
+                    curLevel,     
+                    visited.d_elems);
 
-                } else {
-                    // unordered
-                    BFSKernel_round_queue_thread_map<VertexId, SizeT, Value, true><<<blockNum, block_size>>>(
-                        g.d_row_offsets,                                        
-                        g.d_column_indices,
-                        workset[selector].d_elems,
-                        workset[selector].d_sizep,
-                        workset[selector ^ 1].d_elems,
-                        workset[selector ^ 1].d_sizep,
-                        levels.d_elems,
-                        curLevel,     
-                        visited.d_elems);
-                }
             } else {
-                if (unordered) {
-                    BFSKernel_round_queue_group_map<VertexId, SizeT, Value, false><<<blockNum, block_size>>>(
-                        g.d_row_offsets,
-                        g.d_column_indices,
-                        workset[selector].d_elems,
-                        workset[selector].d_sizep,
-                        workset[selector ^ 1].d_elems,
-                        workset[selector ^ 1].d_sizep,
-                        levels.d_elems,
-                        curLevel,     
-                        visited.d_elems,
-                        group_size,
-                        group_size,
-                        group_per_block);
+                BFSKernel_round_queue_group_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
+                    g.d_row_offsets,
+                    g.d_column_indices,
+                    workset[selector].d_elems,
+                    workset[selector].d_sizep,
+                    workset[selector ^ 1].d_elems,
+                    workset[selector ^ 1].d_sizep,
+                    levels.d_elems,
+                    curLevel,     
+                    visited.d_elems,
+                    group_size,
+                    group_size,
+                    group_per_block);
 
-                } else {
-                    // unorderd
-                    BFSKernel_round_queue_group_map<VertexId, SizeT, Value, true><<<blockNum, block_size>>>(
-                        g.d_row_offsets,
-                        g.d_column_indices,
-                        workset[selector].d_elems,
-                        workset[selector].d_sizep,
-                        workset[selector ^ 1].d_elems,
-                        workset[selector ^ 1].d_sizep,
-                        levels.d_elems,
-                        curLevel,     
-                        visited.d_elems,
-                        group_size,
-                        group_size,
-                        group_per_block);
-                }
+
             } // if else
 
             if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
