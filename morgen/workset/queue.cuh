@@ -55,7 +55,10 @@ struct Queue {
 
 
     void transfer_back() {
-        if (util::handleError(cudaMemcpy(elems, d_elems, sizeof(Value) * n, cudaMemcpyDeviceToHost), 
+        if (util::handleError(cudaMemcpy(sizep, d_sizep, sizeof(SizeT) * 1, cudaMemcpyDeviceToHost), 
+            "Queue: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
+
+        if (util::handleError(cudaMemcpy(elems, d_elems, sizeof(Value) * (*sizep), cudaMemcpyDeviceToHost), 
             "Queue: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
     }
 

@@ -27,7 +27,7 @@
 #include <morgen/bfs/queue.cu>
 #include <morgen/bfs/hash.cu>
 #include <morgen/bfs/topo.cu>
-#include <morgen/bfs/smart.cu>
+#include <morgen/bfs/hybrid.cu>
 #include <morgen/bfs/serial.cu>
 #include <morgen/utils/stats.cuh>
 #include <morgen/utils/command_line.cuh>
@@ -167,6 +167,12 @@ int main(int argc, char **argv) {
         printf("Source node:\t%d\n", source);
     }
 
+
+    std::string new_path;
+    args.GetCmdLineArgument("path", new_path);
+    printf("Path:\t%s\n", new_path.c_str());
+
+
     int slots = 0;
     args.GetCmdLineArgument("slots", slots);
     printf("Slot number:\t%d\n", slots);
@@ -183,7 +189,14 @@ int main(int argc, char **argv) {
     args.GetCmdLineArgument("threshold", threshold);
     printf("Threshold:\t%d\n", threshold);
 
+    int alpha = 0;
+    args.GetCmdLineArgument("alpha", alpha);
+    printf("Alpha:\t%d\n", alpha);
 
+
+    int theta = 0;
+    args.GetCmdLineArgument("theta", theta);
+    printf("theta:\t%d\n", theta);
 
     graph::CsrGraph<VertexId, SizeT, Value> ga;
 
@@ -273,6 +286,11 @@ int main(int argc, char **argv) {
 
         fp = fopen(getenv("LIVE_GRAPH"), "r");
         check_open(fp, "livejournal");
+        if (graph::gen::cooGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
+
+    } else if (graph == "path") {
+        fp = fopen(new_path.c_str(), "r");
+        check_open(fp, "path");
         if (graph::gen::cooGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
 
     } else {
@@ -367,16 +385,24 @@ int main(int argc, char **argv) {
             block_size,
             display_metrics,
             group_size,
-            threshold); 
+            threshold,
+            alpha); 
 
-    } else if (bfs_type == "smart") {
 
-        bfs::BFSGraph_gpu_smart<VertexId, SizeT, Value>(
+    } else if (bfs_type == "hybrid") {
+
+        bfs::BFSGraph_gpu_hybrid<VertexId, SizeT, Value>(
             ga,
             source, 
             stats,
             instrument,
-            block_size);    
+            block_size,
+            display_metrics,
+            group_size,
+            threshold,
+            theta,
+            alpha); 
+  
 
     } else if (bfs_type == "round_bitmask") {
 

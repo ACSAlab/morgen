@@ -34,6 +34,7 @@ struct Stats {
     SizeT vertices;
     SizeT edges;
     SizeT outDegreeLog[32];
+    SizeT bucket[6];
     SizeT outDegreeMax;      
     SizeT totalDegree;
     Value min;
@@ -96,6 +97,8 @@ struct Stats {
             outdegree_vec.push_back(outdegree); 
             totalDegree += outdegree;          
         }
+
+        // setting up bucket size according to the graph
 
         std::sort(outdegree_vec.begin(), outdegree_vec.end());
         min = outdegree_vec[0];

@@ -48,7 +48,6 @@ BFSKernel_queue_thread_map(
     SizeT     *sizeFrom,
     Value     *levels,
     Value     curLevel,
-    int       *visited,
     int       *update)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -105,7 +104,6 @@ BFSKernel_queue_group_map(
     SizeT     *sizeFrom,
     Value     *levels,
     Value     curLevel,
-    int       *visited,
     int       group_size,
     float     group_per_block,
     int       *update)
@@ -153,7 +151,6 @@ BFSKernel_queue_gen_workset(
     SizeT     max_size,
     SizeT     *row_offsets,
     VertexId  *column_indices,
-    int       *visited,
     int       *update,
     VertexId  *worksetTo,
     SizeT     *sizeTo)
@@ -165,7 +162,6 @@ BFSKernel_queue_gen_workset(
         if (update[tid] == 1) {
 
             update[tid] = 0;     // clear after activating
-            visited[tid] = 1;
 
             SizeT pos = atomicAdd( (SizeT*) &(*sizeTo), 1 );
             worksetTo[pos] = tid;
@@ -195,9 +191,6 @@ void BFSGraph_gpu_queue(
     util::List<Value, SizeT> levels(g.n);
     levels.all_to((Value) MORGEN_INF);
 
-    // visitation list: 0 for unvisited
-    util::List<int, SizeT> visited(g.n);
-    visited.all_to(0);
 
     util::List<int, SizeT> update(g.n);
     update.all_to(0);
@@ -205,21 +198,18 @@ void BFSGraph_gpu_queue(
     // traverse from source node
     workset.init(source);   
     levels.set(source, 0);
-    visited.set(source, 1);
     
     SizeT worksetSize = 1;
-    SizeT lastWorksetSize = 0;
+    //SizeT lastWorksetSize = 0;
     Value curLevel = 0;
 
+    SizeT edge_frontier_size;
 
     float total_millis = 0.0;
     float expand_millis = 0.0;
     float compact_millis = 0.0;
 
-    //int accumulatedBlocks = 0;
-
-    // kernel configuration
-    int mapping_factor = (warp_mapped) ? group_size : 1; 
+    if (warp_mapped == false) group_size = 1;
     float group_per_block = (float)block_size / group_size;
 
     printf("GPU queued bfs starts... \n");  
@@ -227,6 +217,7 @@ void BFSGraph_gpu_queue(
 
 
     util::Metrics<VertexId, SizeT, Value> metric;
+    util::Metrics<VertexId, SizeT, Value> level_metric;
 
     /* 
 
@@ -253,39 +244,29 @@ void BFSGraph_gpu_queue(
 
     while (worksetSize > 0) {
 
-
-
-        // kick off timer first
         if (instrument) {
-            expand_timer.start();
+            workset.transfer_back();
+            metric.count(workset.elems, workset.size(), g, group_size);
+            edge_frontier_size = 0;
+            for (int i = 0; i < *workset.sizep; i++) {
+                VertexId v = workset.elems[i];
+                SizeT start = g.row_offsets[v];
+                SizeT end = g.row_offsets[v+1];
+                edge_frontier_size += (end - start);
+            }
+            expand_timer.start();  // start timer
         }
 
-        // kick off timer first
-        //util::GpuTimer gpu_timer;
-        //gpu_timer.start();
-
-        lastWorksetSize = worksetSize;
-
-        
 
         // spawn minimal(but enough) software blocks to cover the workset
-        int blockNum = (worksetSize * mapping_factor % block_size == 0 ? 
-            worksetSize * mapping_factor / block_size :
-            worksetSize * mapping_factor / block_size + 1);
+        int blockNum = (worksetSize * group_size % block_size == 0 ? 
+            worksetSize * group_size / block_size :
+            worksetSize * group_size/ block_size + 1);
         
         // safe belt: grid width has a limit of 65535
         if (blockNum > 65535) blockNum = 65535;
 
-        // before expansion, count the metrics
-
-
         if (warp_mapped) {
-
-
-            if (get_metrics) {
-                workset.transfer_back();
-                metric.count(workset.elems, workset.size(), g, group_size);
-            }
 
             BFSKernel_queue_group_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
                 g.d_row_offsets,
@@ -294,19 +275,11 @@ void BFSGraph_gpu_queue(
                 workset.d_sizep,
                 levels.d_elems,
                 curLevel,     
-                visited.d_elems,
                 group_size,
                 group_per_block,
                 update.d_elems);
 
-
         } else { // thread map
-
-
-            if (get_metrics) {
-                workset.transfer_back();
-                metric.count(workset.elems, workset.size(), g, 1);
-            }
 
             BFSKernel_queue_thread_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
                 g.d_row_offsets,                                        
@@ -315,10 +288,10 @@ void BFSGraph_gpu_queue(
                 workset.d_sizep,
                 levels.d_elems,
                 curLevel,     
-                visited.d_elems,
                 update.d_elems);
 
         }
+        if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
         if (instrument) {
             expand_timer.stop();
@@ -326,11 +299,8 @@ void BFSGraph_gpu_queue(
             compact_timer.start();
         }      
 
-
         workset.clear_size();
 
-
-        if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
         blockNum = (g.n % block_size == 0) ? 
             (g.n / block_size) :
@@ -343,7 +313,6 @@ void BFSGraph_gpu_queue(
             g.n,
             g.d_row_offsets,
             g.d_column_indices,
-            visited.d_elems,
             update.d_elems,
             workset.d_elems,
             workset.d_sizep);
@@ -351,14 +320,13 @@ void BFSGraph_gpu_queue(
         if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
 
-        worksetSize = workset.size();
-
-
         if (instrument) {
             compact_timer.stop();
             compact_millis += compact_timer.elapsedMillis();
-            printf("%d\t%d\t%f\t%f\n", curLevel, lastWorksetSize, expand_timer.elapsedMillis(), compact_timer.elapsedMillis());
+            printf("%d\t%d\t%d\t%f\t%f\n", curLevel, worksetSize, edge_frontier_size, expand_timer.elapsedMillis(), compact_timer.elapsedMillis());
         }
+
+        worksetSize = workset.size();
 
         curLevel += 1;
 
@@ -368,18 +336,19 @@ void BFSGraph_gpu_queue(
     gpu_timer.stop();
     total_millis = gpu_timer.elapsedMillis();
 
-    if (get_metrics) metric.display();
 
     printf("GPU queued bfs terminates\n");  
     float billion_edges_per_second = (float)g.m / total_millis / 1000000.0;
     printf("Time(s):\t%f\nSpeed(BE/s):\t%f\n", total_millis / 1000.0, billion_edges_per_second);
     //printf("Accumulated Blocks: \t%d\n", accumulatedBlocks);
-    if (instrument) printf("Expand: %f\t%f\n", expand_millis / 1000.0, compact_millis / 1000.0);
+    if (instrument) printf("Expand:\t%f\t%f\n", expand_millis / 1000.0, compact_millis / 1000.0);
+    if (instrument) metric.display();
+
+
 
     levels.print_log();
 
     levels.del();
-    visited.del();
     update.del();
     workset.del();
     

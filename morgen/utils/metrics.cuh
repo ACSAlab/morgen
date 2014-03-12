@@ -43,7 +43,16 @@ struct Metrics {
         utilizedLanes = 0;
     }
 
+
+    void clear() {
+        dedicatedLanes = 0;
+        interWastedLanes = 0;
+        intraWastedLanes = 0;
+        utilizedLanes = 0; 
+    }
+
     void display() {
+        /*
         printf("[metric] dedicated:\t%d\n", dedicatedLanes);
         printf("[metric] utilized:\t%d\n", utilizedLanes);
         printf("[metric] inter wasted:\t%d\n", interWastedLanes);
@@ -51,6 +60,10 @@ struct Metrics {
         printf("[metric] URI:\t%.4f\n", (float) interWastedLanes / dedicatedLanes);
         printf("[metric] URA:\t%.4f\n", (float) intraWastedLanes / dedicatedLanes);
         printf("[metric] UR:\t%.4f\n", (float) utilizedLanes / dedicatedLanes);
+        */
+        printf("[metric] \t%.4f\t%.4f\t%.4f\n", (float) interWastedLanes / dedicatedLanes,
+         (float) intraWastedLanes / dedicatedLanes,
+          (float) utilizedLanes / dedicatedLanes);
     }
 
     void count(const VertexId* workset,

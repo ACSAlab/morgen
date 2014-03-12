@@ -47,18 +47,31 @@ struct Hash {
     Hash() : n(0), slot_num(0), elems(NULL), slot_sizes(NULL), slot_offsets(NULL), d_elems(NULL), d_slot_sizes(NULL), d_slot_offsets(NULL) {} 
 
 
-    Hash(const util::Stats<VertexId, SizeT, Value> &stat) {
+    Hash(const util::Stats<VertexId, SizeT, Value> &stat, int alpha) {
         
         // calculate n and slot_num
         slot_num = stat.outDegreeMax;
         n = 0;
+        SizeT accumulated = 0;
         for (int i = 0; i < slot_num; i++) {
-            slot_size_max[i] = stat.outDegreeLog[i+1];  // note outDegreeLog begins with 2^-1
+
+            SizeT node_number = stat.outDegreeLog[i+1];
+            accumulated += node_number;
+            if (node_number < (alpha * stat.vertices / 100)) {
+                slot_size_max[i] = 0;
+            } else {
+                slot_size_max[i] = accumulated;  // note outDegreeLog begins with 2^-1
+                accumulated = 0;
+            }
             n += stat.outDegreeLog[i+1];
         }
 
+        if (accumulated != 0) {
+            slot_size_max[slot_num-1] += accumulated;
+        }
         
         // cut the slots
+        /*
         if (slot_num > 6) {
             int traits = 0;
             for (int i = 6; i < slot_num; i++) {
@@ -66,7 +79,7 @@ struct Hash {
             }
             slot_num = 6;
             slot_size_max[5] += traits;
-        }
+        }*/
     
 
         printf("[hash] slot_num: %d\n", slot_num);
