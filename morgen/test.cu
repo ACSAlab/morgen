@@ -21,10 +21,15 @@
 #include <morgen/graph/gen/mine.cuh>
 #include <morgen/graph/gen/dimacs.cuh>
 #include <morgen/graph/gen/coo.cuh>
+#include <morgen/bfs/round_bitmask.cu>
+#include <morgen/bfs/round_queue.cu>
 #include <morgen/bfs/bitmask.cu>
 #include <morgen/bfs/queue.cu>
 #include <morgen/bfs/hash.cu>
+#include <morgen/bfs/topo.cu>
+#include <morgen/bfs/hybrid.cu>
 #include <morgen/bfs/serial.cu>
+#include <morgen/utils/stats.cuh>
 #include <morgen/utils/command_line.cuh>
 #include <morgen/utils/random_node.cuh>
 #include <morgen/utils/utilizing_efficiency.cuh>
@@ -55,12 +60,15 @@ void usage() {
             "    eco: circuit theory applied to animal/gene flow\n"
             "    thermal: FEM 3D nonlinear thermal problem, 8-node bricks as volume elements\n"
             "    livejournal: LiveJournal's social network\n"
-            "<bfs type>\n"
             "\n"
+            "<bfs type>\n"
             "     serial: \n"
             "     queue: \n"
             "     hash: \n"
             "     bitmask: \n"
+            "     topo: topologically adaptive\n"
+            "     round_bitmask:\n"
+            "     round_queue:\n"
             "\n"
             "--outdegree=log|uniform\n"
             "    print out degrees of the graph in log or uniform style\n"
@@ -86,6 +94,7 @@ void usage() {
             "--slots=<number of slots>\n"
             "--block_size=<block size>\n"
             "--group_size=<group size>\n"
+            "--threshold=<threshold>"
             "\n");
 }
 
@@ -123,29 +132,8 @@ int main(int argc, char **argv) {
     printf("================================================================\n");
     printf("Graph:\t\t%s\n", graph.c_str());
 
-
-    /*********************************************************************
-     * Parse arguments and display them on the screen
-     *********************************************************************/
-    bool display_outdegree_uniform = false;
-    bool display_outdegree_log = false;
-
-    std::string outdegree_str;
-    args.GetCmdLineArgument("outdegree", outdegree_str);
-
-    if (outdegree_str.compare("log") == 0) {
-        display_outdegree_log = true;
-    } else if (outdegree_str.compare("uniform") == 0) {
-        display_outdegree_uniform = true;
-    }
-    
-    if (display_outdegree_uniform) {
-        printf("Display outdegree: \tuniform\n");
-	} else if (display_outdegree_log){
-        printf("Display outdegree: \tuniform\n");
-    } else {
-        printf("Display outdegree: \t\tNo\n");
-    }
+    bool display_stat = args.CheckCmdLineFlag("stat");
+    printf("Display statistics?\t\t%s\n", (display_stat ? "Yes" : "No"));
 
 
     bool display_distribution = args.CheckCmdLineFlag("distribution");
@@ -163,8 +151,9 @@ int main(int argc, char **argv) {
     bool instrument = args.CheckCmdLineFlag("instrument");
     printf("Instrument?\t\t%s\n", (instrument ? "Yes" : "No"));
 
-    bool unordered = args.CheckCmdLineFlag("unordered");
-    printf("Unordered?\t\t%s\n", (unordered ? "Yes" : "No"));
+
+    bool quiet = args.CheckCmdLineFlag("quiet");
+
 
     VertexId source = 0;
     std::string src_str;
@@ -178,6 +167,12 @@ int main(int argc, char **argv) {
         printf("Source node:\t%d\n", source);
     }
 
+
+    std::string new_path;
+    args.GetCmdLineArgument("path", new_path);
+    printf("Path:\t%s\n", new_path.c_str());
+
+
     int slots = 0;
     args.GetCmdLineArgument("slots", slots);
     printf("Slot number:\t%d\n", slots);
@@ -186,10 +181,22 @@ int main(int argc, char **argv) {
     args.GetCmdLineArgument("block_size", block_size);
     printf("BLock size(threads):\t%d\n", block_size);
 
-    int group_size = 32;
+    int group_size = 0;
     args.GetCmdLineArgument("group_size", group_size);
     printf("Group size(threads):\t%d\n", group_size);
 
+    int threshold = 0;
+    args.GetCmdLineArgument("threshold", threshold);
+    printf("Threshold:\t%d\n", threshold);
+
+    int alpha = 0;
+    args.GetCmdLineArgument("alpha", alpha);
+    printf("Alpha:\t%d\n", alpha);
+
+
+    int theta = 0;
+    args.GetCmdLineArgument("theta", theta);
+    printf("theta:\t%d\n", theta);
 
     graph::CsrGraph<VertexId, SizeT, Value> ga;
 
@@ -281,34 +288,37 @@ int main(int argc, char **argv) {
         check_open(fp, "livejournal");
         if (graph::gen::cooGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
 
+    } else if (graph == "path") {
+        fp = fopen(new_path.c_str(), "r");
+        check_open(fp, "path");
+        if (graph::gen::cooGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
+
     } else {
         fprintf(stderr, "no graph is specified\n");
         return 1;
     }
 
+
+    /********************************************************************
+     * Transfer the graph to GPU memory
+     *********************************************************************/
+     ga.transfer();
+
+
     /*********************************************************************
      * Display
      *********************************************************************/
 
-    // Graph Information display(not verbose)
-    ga.printInfo(false); 
-
-    if (display_outdegree_log) 
-        ga.printOutDegreesLog();
-
-	if (display_outdegree_uniform) 
-        ga.printOutDegreesUniform();
+    util::Stats<VertexId, SizeT, Value> stats;
+    stats.gen(ga);
+    if (display_stat) stats.display();
 		
     if (display_distribution) 
         bfs::BFSGraph_serial<VertexId, SizeT, Value>(
             ga,
             (VertexId) 0, 
             instrument, 
-            display_distribution,
-            display_workset);
-
-    if (display_metrics)
-        util::displayUtilizingEfficiency(ga);
+            display_distribution);
 
 
     /*********************************************************************
@@ -323,6 +333,8 @@ int main(int argc, char **argv) {
     printf("Traversing from %d\n", source);    
 
 
+    for (int i=0; i<10; i++) {
+
     /*********************************************************************
      * Traversing
      *********************************************************************/
@@ -332,15 +344,17 @@ int main(int argc, char **argv) {
             ga, 
             source,
             instrument,
-            display_distribution,
-            display_workset);
+            display_distribution);
 
     } else if (bfs_type == "bitmask") {
 
         bfs::BFSGraph_gpu_bitmask<VertexId, SizeT, Value>(
             ga,
             source,
-            instrument);
+            instrument,
+            block_size,
+            warp_mapped,
+            group_size);
 
     } else if (bfs_type == "queue") {
 
@@ -351,8 +365,7 @@ int main(int argc, char **argv) {
             block_size,
             warp_mapped,
             group_size,
-            unordered,
-            display_workset);
+            display_metrics);
 
     } else if (bfs_type == "hash") {
 
@@ -362,10 +375,59 @@ int main(int argc, char **argv) {
             slots, 
             instrument);
 
+    } else if (bfs_type == "topo") {
+
+        bfs::BFSGraph_gpu_topo<VertexId, SizeT, Value>(
+            ga,
+            source, 
+            stats,
+            instrument,
+            block_size,
+            display_metrics,
+            group_size,
+            threshold,
+            alpha); 
+
+
+    } else if (bfs_type == "hybrid") {
+
+        bfs::BFSGraph_gpu_hybrid<VertexId, SizeT, Value>(
+            ga,
+            source, 
+            stats,
+            instrument,
+            block_size,
+            display_metrics,
+            group_size,
+            threshold,
+            theta,
+            alpha); 
+  
+
+    } else if (bfs_type == "round_bitmask") {
+
+        bfs::BFSGraph_gpu_round_bitmask<VertexId, SizeT, Value>(
+            ga,
+            source, 
+            stats,
+            instrument,
+            block_size);
+
+    } else if (bfs_type == "round_queue") {
+
+        bfs::BFSGraph_gpu_round_queue<VertexId, SizeT, Value>(
+            ga,
+            source, 
+            stats,
+            instrument,
+            block_size);
+
     } else {
         fprintf(stderr, "no traverse type is specified. exit quietly\n");
     }
+        if (quiet) break;
 
+    } // for-loop
 
     fclose(fp);
     ga.del();

@@ -19,121 +19,236 @@
 #pragma once
 
 #include <morgen/utils/macros.cuh>
-
+#include <morgen/utils/stats.cuh>
 
 namespace morgen {
 
 namespace workset {
 
 /**************************************************************************
- * naive hash
+ * a topology-ware hash
  **************************************************************************/
-template<typename Value, typename SizeT>
-struct NaiveHash {
+template<typename VertexId, typename SizeT, typename Value>
+struct Hash {
 
     SizeT   slot_num;
-    SizeT   n;                // size in all
-    SizeT   each_slot_size;
+    SizeT   slot_size_max[32];
+    SizeT   n;                // total size of the hash table
+    bool    topo_hashed;   
 
     Value   *elems;
-    SizeT   *slot_sizes;      //the logical size will be changed on gpu 
+    SizeT   *slot_sizes;      // the logical size will be changed on gpu 
     SizeT   *slot_offsets;    
 
     Value   *d_elems;
     SizeT   *d_slot_sizes;
     SizeT   *d_slot_offsets;
 
-    NaiveHash() : n(0), slot_num(0), elems(NULL), slot_sizes(NULL), slot_offsets(NULL), d_elems(NULL), d_slot_sizes(NULL), d_slot_offsets(NULL) {} 
+    Hash() : n(0), slot_num(0), elems(NULL), slot_sizes(NULL), slot_offsets(NULL), d_elems(NULL), d_slot_sizes(NULL), d_slot_offsets(NULL) {} 
 
-    NaiveHash(SizeT _n, SizeT s_num) {  
 
-        slot_num = s_num;
-
-        // e.g. 7 elements will fit into 4 slots
-        // each slots has 2 elements
-        each_slot_size = _n / slot_num + 1;
-        n = each_slot_size * slot_num;
-
-        // Pinned and mapped in memory
-        int flags = cudaHostAllocMapped;
-
+    Hash(const util::Stats<VertexId, SizeT, Value> &stat, int alpha) {
+        
+        // calculate n and slot_num
+        slot_num = stat.outDegreeMax;
+        n = 0;
+        SizeT accumulated = 0;
         for (int i = 0; i < slot_num; i++) {
-            if (util::handleError(cudaHostAlloc((void **)&slot_sizes, sizeof(SizeT) * slot_num, flags),
-                            "NaiveHash: cudaHostAlloc(elems) failed", __FILE__, __LINE__)) exit(1);
-            if (util::handleError(cudaHostAlloc((void **)&slot_offsets, sizeof(SizeT) * slot_num, flags),
-                            "NaiveHash: cudaHostAlloc(sizep) failed", __FILE__, __LINE__)) exit(1);
-            if (util::handleError(cudaHostAlloc((void **)&elems, sizeof(SizeT) * n, flags),
-                            "NaiveHash: cudaHostAlloc(sizep) failed", __FILE__, __LINE__)) exit(1);
+
+            SizeT node_number = stat.outDegreeLog[i+1];
+            accumulated += node_number;
+            if (node_number < (alpha * stat.vertices / 100)) {
+                slot_size_max[i] = 0;
+            } else {
+                slot_size_max[i] = accumulated;  // note outDegreeLog begins with 2^-1
+                accumulated = 0;
+            }
+            n += stat.outDegreeLog[i+1];
         }
 
-        // initalize
+        if (accumulated != 0) {
+            slot_size_max[slot_num-1] += accumulated;
+        }
+        
+        // cut the slots
+        /*
+        if (slot_num > 6) {
+            int traits = 0;
+            for (int i = 6; i < slot_num; i++) {
+                traits += slot_size_max[i];
+            }
+            slot_num = 6;
+            slot_size_max[5] += traits;
+        }*/
+    
+
+        printf("[hash] slot_num: %d\n", slot_num);
+        printf("[hash] n: %d\n", n);
+        for (int i = 0; i < slot_num; i++) {
+            printf("[hash] slot_size_max[%d]: %d\n", i, slot_size_max[i]);
+        }
+
+        // use n and slot_num to allocate slot_sizes[] and slot_offsets
+        slot_sizes = (SizeT*) malloc( sizeof(SizeT) * slot_num );
+        slot_offsets = (SizeT*) malloc( sizeof(SizeT) * slot_num );
+        elems = (Value*) malloc( sizeof(Value) * n );
+
+        // set up slot_sizes and slot_offsets
+        SizeT cursor = 0;
+        for (int i = 0; i < slot_num; i++) {
+            slot_sizes[i] = 0;
+            slot_offsets[i] = cursor;
+            cursor += slot_size_max[i];
+        }
+
+
+
+        topo_hashed = true;
+
+        gpu_stuff();
+
+    }
+
+    // an ordonary hash
+    Hash(SizeT _n, SizeT _s) {
+
+        // calculate n and slot_num
+        slot_num = _s;
+        int each_slot_size = _n / slot_num + 1;
+        n = each_slot_size * slot_num;
+
+        // use n and slot_num to allocate slot_sizes[] and slot_offsets
+        slot_sizes = (SizeT*) malloc( sizeof(SizeT) * slot_num );
+        slot_offsets = (SizeT*) malloc( sizeof(SizeT) * slot_num );
+        elems = (Value*) malloc( sizeof(Value) * n );
+
+
+        // set up slot_sizes and slot_offsets
         for (int i = 0; i < slot_num; i++) {
             slot_sizes[i] = 0;
             slot_offsets[i] = i * each_slot_size;
         }
 
-        // Get the device pointer
-        if (util::handleError(cudaHostGetDevicePointer((void **) &d_elems, (void *) elems, 0),
-                        "NaiveHash: cudaHostGetDevicePointer(d_elems) failed", __FILE__, __LINE__)) exit(1);
-        if (util::handleError(cudaHostGetDevicePointer((void **) &d_slot_sizes, (void *) slot_sizes, 0),
-                        "NaiveHash: cudaHostGetDevicePointer(d_sizep) failed", __FILE__, __LINE__)) exit(1);
-        if (util::handleError(cudaHostGetDevicePointer((void **) &d_slot_offsets, (void *) slot_offsets, 0),
-                        "NaiveHash: cudaHostGetDevicePointer(d_sizep) failed", __FILE__, __LINE__)) exit(1);
+        topo_hashed = false;
+        gpu_stuff();
+
+    }
+
+    void gpu_stuff() {
+         if (util::handleError(cudaMalloc((void **) &d_slot_sizes, sizeof(SizeT) * slot_num),
+            "Hash: cudaMalloc(d_slot_sizes) failed", __FILE__, __LINE__)) exit(1);
+
+        if (util::handleError(cudaMalloc((void **) &d_slot_offsets, sizeof(SizeT) * slot_num),
+            "Hash: cudaMalloc(d_slot_offsets) failed", __FILE__, __LINE__)) exit(1);
+
+        if (util::handleError(cudaMalloc((void **) &d_elems, sizeof(Value) * n),
+            "Hash: cudaMalloc(d_elems) failed", __FILE__, __LINE__)) exit(1);
+
+        // transfer
+        if (util::handleError(cudaMemcpy(d_slot_sizes, slot_sizes, sizeof(SizeT) * slot_num, cudaMemcpyHostToDevice), 
+            "Hash: hostToDevice(slot_sizes) failed", __FILE__, __LINE__)) exit(1);
+
+        if (util::handleError(cudaMemcpy(d_slot_offsets, slot_offsets, sizeof(SizeT) * slot_num, cudaMemcpyHostToDevice), 
+            "Hash: hostToDevice(slot_offsets) failed", __FILE__, __LINE__)) exit(1);
     }
 
 
-    // insert on cpu end
-    int insert(Value key) {
-        SizeT hash = key % slot_num;
-        slot_sizes[hash] += 1;  // increase before writing
-        SizeT pos = slot_offsets[hash] + slot_sizes[hash];
+    void transfer_back() {
+        if (util::handleError(cudaMemcpy(elems, d_elems, sizeof(Value) * n, cudaMemcpyDeviceToHost), 
+            "Hash: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
+        if (util::handleError(cudaMemcpy(slot_offsets, d_slot_offsets, sizeof(Value) * slot_num, cudaMemcpyDeviceToHost), 
+            "Hash: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
+        if (util::handleError(cudaMemcpy(slot_sizes, d_slot_sizes, sizeof(Value) * slot_num, cudaMemcpyDeviceToHost), 
+            "Hash: DeviceToHost(elems) failed", __FILE__, __LINE__)) exit(1);
+    }
+
+    void insert(SizeT hash, Value key) {
+
+  
+        // get slot_size[hash]
+        if (util::handleError(cudaMemcpy(slot_sizes + hash, d_slot_sizes + hash, sizeof(SizeT) * 1, cudaMemcpyDeviceToHost), 
+            "Hash: DeviceToHost(slot_sizes) failed", __FILE__, __LINE__)) exit(1);
+
+        // get old value then increase
+        SizeT old_size = slot_sizes[hash];
+        slot_sizes[hash] += 1;  
+
+        // update slot_size[hash]
+        if (util::handleError(cudaMemcpy(d_slot_sizes + hash, slot_sizes + hash, sizeof(SizeT) * 1, cudaMemcpyHostToDevice), 
+            "Hash: hostToDevice(slot_offsets) failed", __FILE__, __LINE__)) exit(1);
+
+        // slot_offsets won't change
+        SizeT pos = slot_offsets[hash] + old_size;
         elems[pos] = key;
-        return 0;  // succeed
+
+        // write element
+        if (util::handleError(cudaMemcpy(d_elems + pos, elems + pos, sizeof(Value) * 1, cudaMemcpyHostToDevice), 
+            "Hash: hostToDevice(elems) failed", __FILE__, __LINE__)) exit(1);
+
     }
+
 
     // get the largest slot in the hash table
     int max_slot_size() {
-        SizeT  logical_size = 0;
+
+        if (util::handleError(cudaMemcpy(slot_sizes, d_slot_sizes , sizeof(SizeT) * slot_num, cudaMemcpyDeviceToHost), 
+            "Hash: DeviceToHost(slot_sizes) failed", __FILE__, __LINE__)) exit(1);
+
+        SizeT  size = 0;
         for (int i = 0 ; i < slot_num; i++) {
-            logical_size = MORGEN_MAX(logical_size, slot_sizes[i]);
+            size = MORGEN_MAX(size, slot_sizes[i]);
         }
-        return logical_size;
+        return size;
     }
 
     // sum each slot size up
     int sum_slot_size() {
-        SizeT  logical_size = 0;
+
+        if (util::handleError(cudaMemcpy(slot_sizes, d_slot_sizes , sizeof(SizeT) * slot_num, cudaMemcpyDeviceToHost), 
+            "Hash: DeviceToHost(slot_sizes) failed", __FILE__, __LINE__)) exit(1);
+
+        SizeT size = 0;
         for (int i = 0 ; i < slot_num; i++) {
-            logical_size += slot_sizes[i];
+            size += slot_sizes[i];
         }
-        return logical_size;
+        return size;
+    }
+
+
+    void clear_slot_sizes() {
+        for (int i = 0; i < slot_num; i++) {
+            slot_sizes[i] = 0;
+        }
+
+        if (util::handleError(cudaMemcpy(d_slot_sizes, slot_sizes , sizeof(SizeT) * slot_num, cudaMemcpyHostToDevice), 
+            "Hash: HostToDevice(slot_sizes) failed", __FILE__, __LINE__)) exit(1);
+
     }
 
     void del() {
         if (elems) {
-            util::handleError(cudaFreeHost(elems), "NaiveHash: cudaFreeHost(elems) failed", __FILE__, __LINE__);
+            util::handleError(cudaFree(d_elems), "Hash: cudaFreeHost(d_elems) failed", __FILE__, __LINE__);
             elems = NULL;
         }
 
         if (slot_sizes) {
-            util::handleError(cudaFreeHost(slot_sizes), "NaiveHash: cudaFreeHost(slot_sizes) failed", __FILE__, __LINE__);
+            util::handleError(cudaFree(d_slot_sizes), "Hash: cudaFreeHost(d_slot_sizes) failed", __FILE__, __LINE__);
             slot_sizes = NULL;     
         }
 
         if (slot_offsets) {
-            util::handleError(cudaFreeHost(slot_offsets), "NaiveHash: cudaFreeHost(slot_offsets) failed", __FILE__, __LINE__);
+            util::handleError(cudaFree(d_slot_offsets), "Hash: cudaFreeHost(d_slot_offsets) failed", __FILE__, __LINE__);
             slot_offsets = NULL;
         }
         
         n = 0;
         slot_num = 0;
-        each_slot_size = 0;
+        for (int i=0; i < slot_num; i++) {
+            slot_size_max[i] = 0;
+        }
         
     }
 
-    ~NaiveHash() {
-        del();
-    }
 
  };
 
