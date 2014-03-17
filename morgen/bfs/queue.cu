@@ -157,6 +157,9 @@ BFSKernel_queue_gen_workset(
 {
     int tid =  blockIdx.x * blockDim.x + threadIdx.x;
 
+    if (tid == 0) *sizeTo = 0;
+    __syncthreads();
+
     if (tid < max_size) {
 
         if (update[tid] == 1) {
@@ -258,13 +261,7 @@ void BFSGraph_gpu_queue(
         }
 
 
-        // spawn minimal(but enough) software blocks to cover the workset
-        int blockNum = (worksetSize * group_size % block_size == 0 ? 
-            worksetSize * group_size / block_size :
-            worksetSize * group_size/ block_size + 1);
-        
-        // safe belt: grid width has a limit of 65535
-        if (blockNum > 65535) blockNum = 65535;
+        int blockNum = MORGEN_BLOCK_NUM_SAFE(worksetSize * group_size, block_size);
 
         if (warp_mapped) {
 
@@ -299,14 +296,9 @@ void BFSGraph_gpu_queue(
             compact_timer.start();
         }      
 
-        workset.clear_size();
+        //workset.clear_size();
 
-
-        blockNum = (g.n % block_size == 0) ? 
-            (g.n / block_size) :
-            (g.n / block_size + 1);
-        if (blockNum > 65535) blockNum = 65535;
-
+        blockNum = MORGEN_BLOCK_NUM_SAFE(g.n, block_size);
   
         // generate the next workset according to update[]
         BFSKernel_queue_gen_workset<<<blockNum, block_size>>> (

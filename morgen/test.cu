@@ -32,8 +32,6 @@
 #include <morgen/utils/stats.cuh>
 #include <morgen/utils/command_line.cuh>
 #include <morgen/utils/random_node.cuh>
-#include <morgen/utils/utilizing_efficiency.cuh>
-
 
 using namespace morgen;
 

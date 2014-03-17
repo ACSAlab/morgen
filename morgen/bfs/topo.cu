@@ -262,13 +262,7 @@ void BFSGraph_gpu_topo(
 
         if (instrument) level_millis = 0;
 
-        //float level_millis = 0.0;
-
-        // expand edges slot by slot
-        // i:           0  1  2  3  4   5   6...
-        // group_size:  1  2  4  8  16  32  32
         for (int i = 0; i < workset.slot_num; i++) {
-
 
             int partialWorksetSize = workset.slot_sizes[i];
             if (partialWorksetSize== 0) continue;
@@ -283,19 +277,6 @@ void BFSGraph_gpu_topo(
                 case 4: group_size = 16; break;
                 case 5: group_size = 32; break;
                 default: group_size = 32; 
-                /*
-                case 5: group_size = 32; break;
-                case 6: group_size = 64; break;
-                case 7: group_size = 128; break;
-                case 8: group_size = 256;break;
-                case 9: group_size = 512; break;
-                case 10: group_size = 1024;break;
-                case 11: group_size = 2048; break;
-                case 12: group_size = 4096; break;
-                case 13: group_size = 8192; break;
-                case 14: group_size = 16384; break;
-                case 15: group_size = 32768; break;
-                default: fprintf(stderr, "out of control!!\n"); return;*/
             }
 
             while (group_size * partialWorksetSize < threshold) {
@@ -304,7 +285,6 @@ void BFSGraph_gpu_topo(
             }
 
             if (static_group_size != 0) group_size = static_group_size;
-
 
             if (instrument) {
                 workset.transfer_back();
@@ -321,11 +301,8 @@ void BFSGraph_gpu_topo(
 
 
             float group_per_block = (float)block_size / group_size;
-            blockNum = ((partialWorksetSize * group_size) % block_size == 0 ? 
-                partialWorksetSize * group_size / block_size :
-                partialWorksetSize * group_size / block_size + 1);
-            // safe belt
-            if (blockNum > 65535) blockNum = 65535;
+
+            blockNum = MORGEN_BLOCK_NUM_SAFE(partialWorksetSize * group_size, block_size);
 
 
             if (group_size == 1) {
