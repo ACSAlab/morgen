@@ -201,7 +201,7 @@ void BFSGraph_gpu_round_queue(
     visited.all_to(0);
 
     // traverse from source node
-    workset[0].init(source);   
+    workset[0].insert(source);   
     levels.set(source, 0);
     visited.set(source, 1);
     SizeT worksetSize = 1;

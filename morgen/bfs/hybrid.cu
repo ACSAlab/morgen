@@ -310,7 +310,7 @@ void BFSGraph_gpu_hybrid(
 
 
     // traverse from source node
-    workset_queue.init(source); 
+    workset_queue.insert(source); 
     //workset.insert(outdegreesLog.elems[source], source);   
     levels.set(source, 0);
     util::List<int, SizeT> update(g.n);

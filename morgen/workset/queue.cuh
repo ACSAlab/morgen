@@ -66,7 +66,7 @@ struct Queue {
     /**
      * A.K.A. enqueue a value
      */
-    void init(Value v) {
+    void insert(Value v) {
 
         *sizep = 1;
         elems[0] = v;

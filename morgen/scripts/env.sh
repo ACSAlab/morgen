@@ -1,5 +1,5 @@
 #!/bin/bash
-export GRAPH_HOME="/home/chengyichao/food"
+export GRAPH_HOME="/home/onesuper/food"
 export TINY_GRAPH="${GRAPH_HOME}/tiny"
 export FLA_GRAPH="${GRAPH_HOME}/FLA-road"
 export MESH_GRAPH="${GRAPH_HOME}/mesh.6pt"
