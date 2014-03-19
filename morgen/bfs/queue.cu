@@ -32,56 +32,6 @@ namespace morgen {
 namespace bfs {
 
 
-/* texture memory */
-//texture<int> tex_row_offsets;
-//texture<int> tex_column_indices;
-
-
-template<typename VertexId,
-         typename SizeT, 
-         typename Value>
-__global__ void
-BFSKernel_queue_thread_map(
-    SizeT     *row_offsets,
-    VertexId  *column_indices,
-    VertexId  *worksetFrom,
-    SizeT     *sizeFrom,
-    Value     *levels,
-    Value     curLevel,
-    int       *update)
-{
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (tid < *sizeFrom) {
-        
-        // read the who-am-I info from the workset
-        VertexId outNode = worksetFrom[tid];
-
-        SizeT outEdgeFirst = row_offsets[outNode];
-        //SizeT outEdgeFirst = tex1Dfetch(tex_row_offsets, outNode);
-
-        SizeT outEdgeLast = row_offsets[outNode+1];
-        //SizeT outEdgeLast = tex1Dfetch(tex_row_offsets, outNode+1);
-
-        // serial expansion
-        for (SizeT edge = outEdgeFirst; edge < outEdgeLast; edge++) {
-
-            VertexId inNode = column_indices[edge];
-            //VertexId inNode = tex1Dfetch(tex_column_indices, edge);
-
-
-
-            if (levels[inNode] == MORGEN_INF) {
-                levels[inNode] = curLevel + 1;
-                update[inNode] = 1;
-            }
-
-        }   
-    }
-}
-
-
-
 
 /**
  * Each vertex(u) in worksetFrom is assigned with a group of threads.
@@ -129,8 +79,6 @@ BFSKernel_queue_group_map(
         {
             
             VertexId inNode = column_indices[edge];
-            //VertexId inNode = tex1Dfetch(tex_column_indices, edge);
-
 
             if (levels[inNode] == MORGEN_INF) {
                 levels[inNode] = curLevel + 1;
@@ -157,9 +105,6 @@ BFSKernel_queue_gen_workset(
 {
     int tid =  blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (tid == 0) *sizeTo = 0;
-    __syncthreads();
-
     if (tid < max_size) {
 
         if (update[tid] == 1) {
@@ -180,30 +125,22 @@ void BFSGraph_gpu_queue(
     VertexId source,
     bool instrument,
     int block_size,
-    bool warp_mapped,
     int group_size,
     bool get_metrics)
 {
 
-    // To make better use of the workset, we create two.
-    // Instead of creating a new one everytime in each BFS level,
-    // we just expand vertices from one to another
     workset::Queue<VertexId, SizeT>  workset(g.n);
 
-    // Initalize auxiliary list
     util::List<Value, SizeT> levels(g.n);
     levels.all_to((Value) MORGEN_INF);
-
 
     util::List<int, SizeT> update(g.n);
     update.all_to(0);
 
-    // traverse from source node
     workset.init(source);   
     levels.set(source, 0);
     
     SizeT worksetSize = 1;
-    //SizeT lastWorksetSize = 0;
     Value curLevel = 0;
 
     SizeT edge_frontier_size;
@@ -212,7 +149,6 @@ void BFSGraph_gpu_queue(
     float expand_millis = 0.0;
     float compact_millis = 0.0;
 
-    if (warp_mapped == false) group_size = 1;
     float group_per_block = (float)block_size / group_size;
 
     printf("GPU queued bfs starts... \n");  
@@ -221,20 +157,6 @@ void BFSGraph_gpu_queue(
 
     util::Metrics<VertexId, SizeT, Value> metric;
     util::Metrics<VertexId, SizeT, Value> level_metric;
-
-    /* 
-
-    bind the graph in texture memory(1D)
-    
-    if (util::handleError(cudaBindTexture(0, tex_column_indices, g.d_column_indices, sizeof(VertexId) * g.m), 
-        "CsrGraph: bindTexture(d_column_indices) failed", __FILE__, __LINE__)) exit(1);        
-
-    if (util::handleError(cudaBindTexture(0, tex_row_offsets, g.d_row_offsets, sizeof(SizeT) * (g.n + 1)), 
-        "CsrGraph: bindTexture(d_row_offsets) failed", __FILE__, __LINE__)) exit(1);
-        
-    printf("Done texture memory binding.\n");
-
-    */
 
 
     util::GpuTimer gpu_timer;
@@ -260,34 +182,21 @@ void BFSGraph_gpu_queue(
             expand_timer.start();  // start timer
         }
 
-
         int blockNum = MORGEN_BLOCK_NUM_SAFE(worksetSize * group_size, block_size);
 
-        if (warp_mapped) {
 
-            BFSKernel_queue_group_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
-                g.d_row_offsets,
-                g.d_column_indices,
-                workset.d_elems,
-                workset.d_sizep,
-                levels.d_elems,
-                curLevel,     
-                group_size,
-                group_per_block,
-                update.d_elems);
 
-        } else { // thread map
+        BFSKernel_queue_group_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
+            g.d_row_offsets,
+            g.d_column_indices,
+            workset.d_elems,
+            workset.d_sizep,
+            levels.d_elems,
+            curLevel,     
+            group_size,
+            group_per_block,
+            update.d_elems);
 
-            BFSKernel_queue_thread_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
-                g.d_row_offsets,                                        
-                g.d_column_indices,
-                workset.d_elems,
-                workset.d_sizep,
-                levels.d_elems,
-                curLevel,     
-                update.d_elems);
-
-        }
         if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
         if (instrument) {
@@ -296,7 +205,7 @@ void BFSGraph_gpu_queue(
             compact_timer.start();
         }      
 
-        //workset.clear_size();
+        workset.clear_size();
 
         blockNum = MORGEN_BLOCK_NUM_SAFE(g.n, block_size);
   
@@ -310,7 +219,6 @@ void BFSGraph_gpu_queue(
             workset.d_sizep);
 
         if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
-
 
         if (instrument) {
             compact_timer.stop();
@@ -328,14 +236,12 @@ void BFSGraph_gpu_queue(
     gpu_timer.stop();
     total_millis = gpu_timer.elapsedMillis();
 
-
     printf("GPU queued bfs terminates\n");  
     float billion_edges_per_second = (float)g.m / total_millis / 1000000.0;
     printf("Time(s):\t%f\nSpeed(BE/s):\t%f\n", total_millis / 1000.0, billion_edges_per_second);
     //printf("Accumulated Blocks: \t%d\n", accumulatedBlocks);
     if (instrument) printf("Expand:\t%f\t%f\n", expand_millis / 1000.0, compact_millis / 1000.0);
     if (instrument) metric.display();
-
 
 
     levels.print_log();

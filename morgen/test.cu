@@ -361,7 +361,6 @@ int main(int argc, char **argv) {
             source,
             instrument,
             block_size,
-            warp_mapped,
             group_size,
             display_metrics);
 
