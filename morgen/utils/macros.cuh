@@ -26,7 +26,7 @@
 
 #define MORGEN_BLOCK_NUM(a, b) ((a % b == 0 ? (a / b) : (a / b + 1)))
 
-#define MORGEN_BLOCK_NUM_SAFE(a, b) MORGEN_MIN(MORGEN_BLOCK_NUM(a, b), 65536)
+#define MORGEN_BLOCK_NUM_SAFE(a, b) MORGEN_MIN(MORGEN_BLOCK_NUM(a, b), 65535)
 
 #define MORGEN_INF 2147483647
 

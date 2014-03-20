@@ -179,7 +179,7 @@ int main(int argc, char **argv) {
     args.GetCmdLineArgument("block_size", block_size);
     printf("BLock size(threads):\t%d\n", block_size);
 
-    int group_size = 0;
+    int group_size = 1;
     args.GetCmdLineArgument("group_size", group_size);
     printf("Group size(threads):\t%d\n", group_size);
 
@@ -286,6 +286,37 @@ int main(int argc, char **argv) {
         check_open(fp, "livejournal");
         if (graph::gen::cooGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
 
+    } else if (graph == "patents") {
+
+        fp = fopen(getenv("PATENTS_GRAPH"), "r");
+        check_open(fp, "patents");
+        if (graph::gen::cooGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
+
+
+    } else if (graph == "nlp") {
+
+        fp = fopen(getenv("NLPKKT_GRAPH"), "r");
+        check_open(fp, "nlp");
+        if (graph::gen::dimacsGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
+
+    } else if (graph == "kron") {
+
+        fp = fopen(getenv("KRON_GRAPH"), "r");
+        check_open(fp, "kron");
+        if (graph::gen::dimacsGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
+
+    } else if (graph == "cage") {
+
+        fp = fopen(getenv("CAGE_GRAPH"), "r");
+        check_open(fp, "cage");
+        if (graph::gen::dimacsGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
+
+    } else if (graph == "usa") {
+
+        fp = fopen(getenv("USA_GRAPH"), "r");
+        check_open(fp, "usa");
+        if (graph::gen::myGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
+
     } else if (graph == "path") {
         fp = fopen(new_path.c_str(), "r");
         check_open(fp, "path");
@@ -381,7 +412,6 @@ int main(int argc, char **argv) {
             instrument,
             block_size,
             display_metrics,
-            group_size,
             threshold,
             alpha); 
 

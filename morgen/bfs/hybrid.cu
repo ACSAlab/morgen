@@ -124,53 +124,6 @@ BFSKernel_hybrid_to_queue_gen_workset(
 
 
 
-/**
- * This is a fixed thread-mapping kernel for hashe-based workset
- * The workset of current level is processed in one kernal launch
- */
-template<typename VertexId, 
-         typename SizeT,
-         typename Value>
-__global__ void
-BFSKernel_hybrid_from_hash_thread_map(
-  SizeT     *row_offsets,
-  VertexId  *column_indices,
-  VertexId  *workset_from,
-  SizeT     *slot_offsets_from,
-  SizeT     *slot_sizes_from,
-  int       slot_id_from,
-  Value     *levels,
-  Value     curLevel,
-  int       *update)
-{
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-
-
-    if (tid < slot_sizes_from[slot_id_from]) {
-
-        VertexId outNode = workset_from[slot_offsets_from[slot_id_from] + tid];
-        SizeT outEdgeFirst = row_offsets[outNode];
-        SizeT outEdgeLast = row_offsets[outNode+1];
-
-
-        for (SizeT e = outEdgeFirst; e < outEdgeLast; e++) {
-            VertexId inNode = column_indices[e];
-
-            if (levels[inNode] == MORGEN_INF) { 
-                levels[inNode] = curLevel + 1;
-                update[inNode] = 1;
-            }
-            
-
-       }
-    }   
-    
-    
-}
-
-
-
-
 template<typename VertexId, 
          typename SizeT, 
          typename Value>
@@ -255,8 +208,6 @@ BFSKernel_hybrid_to_hash_gen_workset(
 
 
 
-
-
 template<typename VertexId, typename SizeT, typename Value>
 void BFSGraph_gpu_hybrid(
     const graph::CsrGraph<VertexId, SizeT, Value> &g, 
@@ -271,47 +222,28 @@ void BFSGraph_gpu_hybrid(
     int alpha = 100)
 {
 
-
-    // To make better use of the workset, we create two.
-    // Instead of creating a new one everytime in each BFS level,
-    // we just expand vertices from one to another
     workset::Hash<VertexId, SizeT, Value>  workset_hash(stats, alpha);
     workset::Queue<VertexId, SizeT>  workset_queue(g.n);
 
-
-    // create a outdegree table first
-    // outdegree:     0  (0,1]  (1, 2]  (2, 4]   (4, 8]   (8, 16]
-    // altered       -1   0      1       2       3        4       
     util::List<Value, SizeT> outdegreesLog(g.n);
     for (SizeT i = 0; i < g.n; i++) {
         SizeT outDegree = g.row_offsets[i+1] - g.row_offsets[i];
 
-        int slot_should_go;        
+        int slot_should_go = util::getLogOf(outDegree);
 
-        slot_should_go = util::getLogOf(outDegree);
-
-        // the slot is set to empty, mov it to the next slot
         while (workset_hash.slot_size_max[slot_should_go] == 0) { 
             slot_should_go += 1;
         }
 
         outdegreesLog.elems[i] = slot_should_go;
-        
-        //outdegreesLog.elems[i] = util::getLogOf(outDegree);;
     }
     outdegreesLog.transfer();
 
 
-
-    // Initalize auxiliary list
     util::List<Value, SizeT> levels(g.n);
     levels.all_to((Value) MORGEN_INF);
 
-
-
-    // traverse from source node
     workset_queue.init(source); 
-    //workset.insert(outdegreesLog.elems[source], source);   
     levels.set(source, 0);
     util::List<int, SizeT> update(g.n);
     update.all_to(0);
@@ -320,10 +252,9 @@ void BFSGraph_gpu_hybrid(
     SizeT worksetSize = 1;
     SizeT lastWorksetSize = 0;
     Value curLevel = 0;
-    //int accumulatedBlocks = 0;
 
-    // kernel configuration
     int blockNum;
+
     printf("GPU topology-aware bfs starts... \n");  
 
     if (instrument) printf("level\tslot_size\tfrontier_size\tratio\ttime\n");
@@ -342,12 +273,16 @@ void BFSGraph_gpu_hybrid(
 
     util::Metrics<VertexId, SizeT, Value> metric;
 
-    // kick off timer first
     util::GpuTimer gpu_timer;
     util::GpuTimer queue_expand_timer;
     util::GpuTimer queue_compact_timer;
     util::GpuTimer hash_expand_timer;
     util::GpuTimer hash_compact_timer;
+
+    cudaStream_t streams[20];
+    for (int i=0; i<20; i++) {
+        cudaStreamCreate(&streams[i]);
+    }
 
     bool last_workset_is_hash = false;
     gpu_timer.start();
@@ -382,41 +317,23 @@ void BFSGraph_gpu_hybrid(
             }
 
             float group_per_block = (float)block_size / group_size;
-            blockNum = ((partialWorksetSize * group_size) % block_size == 0 ? 
-                partialWorksetSize * group_size / block_size :
-                partialWorksetSize * group_size / block_size + 1);
-
-            // safe belt
-            if (blockNum > 65535) blockNum = 65535;
-            if (group_size == 1) {
-                BFSKernel_hybrid_from_hash_thread_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
-                    g.d_row_offsets,
-                    g.d_column_indices,
-                    workset_hash.d_elems,
-                    workset_hash.d_slot_offsets,
-                    workset_hash.d_slot_sizes,
-                    i,                                    
-                    levels.d_elems,
-                    curLevel,     
-                    update.d_elems);
-            } else {
-                BFSKernel_hybrid_from_hash_group_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
-                    g.d_row_offsets,
-                    g.d_column_indices,
-                    workset_hash.d_elems,
-                    workset_hash.d_slot_offsets,
-                    workset_hash.d_slot_sizes,
-                    i,                                    
-                    levels.d_elems,
-                    curLevel,     
-                    update.d_elems,
-                    group_size,
-                    group_per_block);
-            }
-            if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
-
-
+            blockNum = MORGEN_BLOCK_NUM_SAFE(partialWorksetSize * group_size, block_size);
+            BFSKernel_hybrid_from_hash_group_map<VertexId, SizeT, Value><<<blockNum, block_size, 0, streams[i]>>>(
+                g.d_row_offsets,
+                g.d_column_indices,
+                workset_hash.d_elems,
+                workset_hash.d_slot_offsets,
+                workset_hash.d_slot_sizes,
+                i,                                    
+                levels.d_elems,
+                curLevel,     
+                update.d_elems,
+                group_size,
+                group_per_block);
         }
+
+        if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
+
 
         if (instrument) {
             hash_expand_timer.stop();
@@ -447,6 +364,7 @@ void BFSGraph_gpu_hybrid(
             32,
             group_per_block,
             update.d_elems);
+
         if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
         if (instrument) {
@@ -465,12 +383,8 @@ void BFSGraph_gpu_hybrid(
         if (instrument) { hash_compact_timer.start(); }
 
         workset_hash.clear_slot_sizes();
-        blockNum = (g.n % block_size == 0) ? 
-            (g.n / block_size) :
-            (g.n / block_size + 1);
-        if (blockNum > 65535) blockNum = 65535;
 
-        // generate the next workset according to update[]
+        blockNum = MORGEN_BLOCK_NUM_SAFE(g.n, block_size);
         BFSKernel_hybrid_to_hash_gen_workset<<<blockNum, block_size>>> (
             g.n,
             g.d_row_offsets,
@@ -490,7 +404,7 @@ void BFSGraph_gpu_hybrid(
         if (instrument) {
             hash_compact_timer.stop();
             hash_compact_millis += hash_compact_timer.elapsedMillis();
-            //printf("hash: %d\t%d\n", curLevel, lastWorksetSize);
+            printf("hash: %d\t%d\n", curLevel, lastWorksetSize);
         }
 
         ///////////////////////////// hash compaction //////////////////////////
@@ -502,11 +416,7 @@ void BFSGraph_gpu_hybrid(
 
         workset_queue.clear_size();
 
-        blockNum = (g.n % block_size == 0) ? 
-            (g.n / block_size) :
-            (g.n / block_size + 1);
-        if (blockNum > 65535) blockNum = 65535;
-
+        blockNum = MORGEN_BLOCK_NUM_SAFE(g.n, block_size);
         BFSKernel_hybrid_to_queue_gen_workset<<<blockNum, block_size>>> (
             g.n,
             g.d_row_offsets,
@@ -518,13 +428,11 @@ void BFSGraph_gpu_hybrid(
         if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
         worksetSize = workset_queue.size();
-
         last_workset_is_hash = false;
-
         if (instrument) {
             queue_compact_timer.stop();
             queue_compact_millis +=  queue_compact_timer.elapsedMillis();
-            //printf("queue: %d\t%d\n", curLevel, lastWorksetSize);
+            printf("queue: %d\t%d\n", curLevel, lastWorksetSize);
         }
         ////////////////////////////////// queue compaction ///////////////////////////
 

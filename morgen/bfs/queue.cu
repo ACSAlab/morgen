@@ -96,7 +96,7 @@ BFSKernel_queue_group_map(
 template<typename VertexId, typename SizeT>
 __global__ void
 BFSKernel_queue_gen_workset(
-    SizeT     max_size,
+    SizeT     n,
     SizeT     *row_offsets,
     VertexId  *column_indices,
     int       *update,
@@ -105,7 +105,7 @@ BFSKernel_queue_gen_workset(
 {
     int tid =  blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (tid < max_size) {
+    if (tid < n) {
 
         if (update[tid] == 1) {
 
@@ -149,10 +149,10 @@ void BFSGraph_gpu_queue(
     float expand_millis = 0.0;
     float compact_millis = 0.0;
 
-    float group_per_block = (float)block_size / group_size;
+    float group_per_block = (float) block_size / group_size;
 
     printf("GPU queued bfs starts... \n");  
-    if (instrument) printf("level\tfrontier_size\tblock_num\ttime\n");
+    if (instrument) printf("level\tfrontier_size\tedge frontier\ttime\n");
 
 
     util::Metrics<VertexId, SizeT, Value> metric;
@@ -183,8 +183,6 @@ void BFSGraph_gpu_queue(
         }
 
         int blockNum = MORGEN_BLOCK_NUM_SAFE(worksetSize * group_size, block_size);
-
-
 
         BFSKernel_queue_group_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
             g.d_row_offsets,

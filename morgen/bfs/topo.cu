@@ -123,8 +123,7 @@ void BFSGraph_gpu_topo(
     bool instrument,
     int block_size,
     bool get_metrics,
-    int  static_group_size,
-    int threshold,
+    int threshold=0,
     int alpha = 100)
 {
 
@@ -161,6 +160,7 @@ void BFSGraph_gpu_topo(
 
     // kernel configuration
     int blockNum;
+    int group_size;
     printf("GPU topology-aware bfs starts... \n");  
 
     if (instrument) printf("level\tslot_size\tfrontier_size\tratio\ttime\n");
@@ -177,6 +177,11 @@ void BFSGraph_gpu_topo(
     util::GpuTimer expand_timer;
     util::GpuTimer compact_timer;
 
+    cudaStream_t streams[20];
+
+    for (int i=0; i<20; i++) {
+        cudaStreamCreate(&streams[i]);
+    }
 
     gpu_timer.start();
 
@@ -191,7 +196,6 @@ void BFSGraph_gpu_topo(
             if (partialWorksetSize== 0) continue;
 
             // decide which mapping strategy to be used according to i
-            int group_size = 0;
             switch (i) {
                 case 0: group_size = 1; break;
                 case 1: group_size = 2; break;
@@ -207,8 +211,6 @@ void BFSGraph_gpu_topo(
                 group_size *= 2;
             }
 
-            if (static_group_size != 0) group_size = static_group_size;
-
             if (instrument) {
                 workset.transfer_back();
                 metric.count(workset.elems + workset.slot_offsets[i], partialWorksetSize, g, group_size);
@@ -222,12 +224,10 @@ void BFSGraph_gpu_topo(
                 expand_timer.start();
             }
 
-
             float group_per_block = (float) block_size / group_size;
-
             blockNum = MORGEN_BLOCK_NUM_SAFE(partialWorksetSize * group_size, block_size);
 
-            BFSKernel_topo_group_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
+            BFSKernel_topo_group_map<VertexId, SizeT, Value><<<blockNum, block_size, 0, streams[i]>>>(
                 g.d_row_offsets,
                 g.d_column_indices,
                 workset.d_elems,
@@ -240,7 +240,6 @@ void BFSGraph_gpu_topo(
                 group_size,
                 group_per_block);
 
-            if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
             if (instrument) { 
                 expand_timer.stop(); 
@@ -250,6 +249,9 @@ void BFSGraph_gpu_topo(
             //level_millis += gpu_timer.elapsedMillis();
             if (instrument) printf("\t[slot] %d\t%d\t%d\t%d\t%f\t%f\n", i, group_size, partialWorksetSize, edge_frontier_size, expand_timer.elapsedMillis());
         }
+
+
+        if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
 
         if (instrument) compact_timer.start();
@@ -288,19 +290,15 @@ void BFSGraph_gpu_topo(
     gpu_timer.stop();
     total_millis = gpu_timer.elapsedMillis();
 
-
     printf("GPU topo bfs terminates\n");
     float billion_edges_per_second = (float)g.m / total_millis / 1000000.0;
     printf("Time(s):\t%f\nSpeed(BE/s):\t%f\n", total_millis / 1000.0, billion_edges_per_second);
     //printf("Accumulated Blocks: \t%d\n", accumulatedBlocks);
 
-
     if (instrument) printf("Expand: \t%f\t%f\n", expand_millis / 1000.0, compact_millis / 1000.0);
     if (instrument) metric.display();
 
-
     levels.print_log();
-
     levels.del();
     update.del();
     outdegreesLog.del();
