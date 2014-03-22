@@ -45,12 +45,16 @@ BFSKernel_topo_group_map(
   VertexId  *workset_from,
   SizeT     *slot_offsets_from,
   SizeT     *slot_sizes_from,
+  VertexId  *workset_to,
+  SizeT     *slot_offsets_to,
+  SizeT     *slot_sizes_to,
   int       slot_id_from,
   Value     *levels,
   Value     curLevel,
   int       *update,
   int       group_size,
-  float     group_per_block)
+  float     group_per_block,
+  int       *outdegrees)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -70,47 +74,17 @@ BFSKernel_topo_group_map(
             VertexId inNode = column_indices[edge];
             if (levels[inNode] == MORGEN_INF) {
                 levels[inNode] = curLevel + 1;
-                update[inNode] = 1;
+                int hash = outdegrees[inNode];
+                if (hash >= 0) {
+                    SizeT pos= atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
+                    workset_to[slot_offsets_to[hash] + pos] = inNode;
+                }
             }
         } // edge loop
 
     }
     
 }
-
-
-
-/**
- * use update[] to mask activated[]
- */
-template<typename VertexId, typename SizeT>
-__global__ void
-BFSKernel_topo_gen_workset(
-    SizeT     n,
-    SizeT     *row_offsets,
-    VertexId  *column_indices,
-    int       *update,
-    VertexId  *workset_to,
-    SizeT     *slot_offsets_to,
-    VertexId  *slot_sizes_to,
-    int       *outdegrees)
-{
-    int tid =  blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (tid < n) {
-
-        if (update[tid] == 1) {
-
-            update[tid] = 0;     // clear after activating
-            int hash = outdegrees[tid];
-            if (hash >= 0) {
-                SizeT pos= atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
-                workset_to[slot_offsets_to[hash] + pos] = tid;
-            }
-        }
-    }
-}
-
 
 
 
@@ -128,7 +102,10 @@ void BFSGraph_gpu_topo(
 {
 
 
-    workset::Hash<VertexId, SizeT, Value>  workset(stats, alpha);
+    workset::Hash<VertexId, SizeT, Value>  workset1(stats, alpha);
+    workset::Hash<VertexId, SizeT, Value>  workset2(stats, alpha);
+
+
 
     // create a outdegree table first     
     util::List<Value, SizeT> outdegreesLog(g.n);
@@ -136,7 +113,7 @@ void BFSGraph_gpu_topo(
         SizeT outDegree = g.row_offsets[i+1] - g.row_offsets[i];
 
         int slot_should_go = util::getLogOf(outDegree);
-        while (workset.slot_size_max[slot_should_go] == 0) { 
+        while (workset1.slot_size_max[slot_should_go] == 0) { 
             slot_should_go += 1;
         }
         outdegreesLog.elems[i] = slot_should_go;
@@ -148,7 +125,7 @@ void BFSGraph_gpu_topo(
     levels.all_to((Value) MORGEN_INF);
 
     // traverse from source node
-    workset.insert(outdegreesLog.elems[source], source);   
+    workset1.insert(outdegreesLog.elems[source], source);   
     levels.set(source, 0);
     util::List<int, SizeT> update(g.n);
     update.all_to(0);
@@ -166,7 +143,7 @@ void BFSGraph_gpu_topo(
     if (instrument) printf("level\tslot_size\tfrontier_size\tratio\ttime\n");
 
     float total_millis = 0.0;
-    float level_millis = 0.0;
+    //float level_millis = 0.0;
     float expand_millis = 0.0;
     float compact_millis = 0.0;
 
@@ -188,11 +165,13 @@ void BFSGraph_gpu_topo(
     while (worksetSize > 0) {
 
 
-        if (instrument) level_millis = 0;
+        if (curLevel % 2 == 0) {
 
-        for (int i = 0; i < workset.slot_num; i++) {
+        // 1->2
+        workset2.clear_slot_sizes();
+        for (int i = 0; i < workset1.slot_num; i++) {
 
-            int partialWorksetSize = workset.slot_sizes[i];
+            int partialWorksetSize = workset1.slot_sizes[i];
             if (partialWorksetSize== 0) continue;
 
             // decide which mapping strategy to be used according to i
@@ -211,17 +190,56 @@ void BFSGraph_gpu_topo(
                 group_size *= 2;
             }
 
-            if (instrument) {
-                workset.transfer_back();
-                metric.count(workset.elems + workset.slot_offsets[i], partialWorksetSize, g, group_size);
-                edge_frontier_size = 0;
-                for (int j = 0; j < workset.slot_sizes[i]; j++) {
-                    VertexId v = workset.elems[workset.slot_offsets[i]+j];
-                    SizeT start = g.row_offsets[v];
-                    SizeT end = g.row_offsets[v+1];
-                    edge_frontier_size += (end - start);
-                }
-                expand_timer.start();
+            float group_per_block = (float) block_size / group_size;
+            blockNum = MORGEN_BLOCK_NUM_SAFE(partialWorksetSize * group_size, block_size);
+
+            BFSKernel_topo_group_map<VertexId, SizeT, Value><<<blockNum, block_size, 0, streams[i]>>>(
+                g.d_row_offsets,
+                g.d_column_indices,
+                workset1.d_elems,
+                workset1.d_slot_offsets,
+                workset1.d_slot_sizes,
+                workset2.d_elems,
+                workset2.d_slot_offsets,
+                workset2.d_slot_sizes,
+                i,                                    
+                levels.d_elems,
+                curLevel,     
+                update.d_elems,
+                group_size,
+                group_per_block,
+                outdegreesLog.d_elems);
+
+            if (instrument) printf("\t[slot] %d\t%d\t%d\t%d\t%f\t%f\n", i, group_size, partialWorksetSize, edge_frontier_size, expand_timer.elapsedMillis());
+        } // for
+
+        if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
+
+        worksetSize = workset2.sum_slot_size();
+
+        } else {
+
+        // 2->1
+        workset1.clear_slot_sizes();
+        for (int i = 0; i < workset2.slot_num; i++) {
+
+            int partialWorksetSize = workset2.slot_sizes[i];
+            if (partialWorksetSize== 0) continue;
+
+            // decide which mapping strategy to be used according to i
+            switch (i) {
+                case 0: group_size = 1; break;
+                case 1: group_size = 2; break;
+                case 2: group_size = 4; break;
+                case 3: group_size = 8; break;
+                case 4: group_size = 16; break;
+                case 5: group_size = 32; break;
+                default: group_size = 32; 
+            }
+
+            while (group_size * partialWorksetSize < threshold) {
+                if (group_size == 32) break;
+                group_size *= 2;
             }
 
             float group_per_block = (float) block_size / group_size;
@@ -230,60 +248,28 @@ void BFSGraph_gpu_topo(
             BFSKernel_topo_group_map<VertexId, SizeT, Value><<<blockNum, block_size, 0, streams[i]>>>(
                 g.d_row_offsets,
                 g.d_column_indices,
-                workset.d_elems,
-                workset.d_slot_offsets,
-                workset.d_slot_sizes,
+                workset2.d_elems,
+                workset2.d_slot_offsets,
+                workset2.d_slot_sizes,
+                workset1.d_elems,
+                workset1.d_slot_offsets,
+                workset1.d_slot_sizes,
                 i,                                    
                 levels.d_elems,
                 curLevel,     
                 update.d_elems,
                 group_size,
-                group_per_block);
+                group_per_block,
+                outdegreesLog.d_elems);
 
-
-            if (instrument) { 
-                expand_timer.stop(); 
-                expand_millis +=  expand_timer.elapsedMillis();
-                level_millis += expand_timer.elapsedMillis();
-            }
-            //level_millis += gpu_timer.elapsedMillis();
             if (instrument) printf("\t[slot] %d\t%d\t%d\t%d\t%f\t%f\n", i, group_size, partialWorksetSize, edge_frontier_size, expand_timer.elapsedMillis());
-        }
-
-
-        if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
-
-
-        if (instrument) compact_timer.start();
-
-        // clear the workset first
-        workset.clear_slot_sizes();
-
-        blockNum = MORGEN_BLOCK_NUM_SAFE(g.n, block_size);
-        // generate the next workset according to update[]
-        BFSKernel_topo_gen_workset<<<blockNum, block_size>>> (
-            g.n,
-            g.d_row_offsets,
-            g.d_column_indices,
-            update.d_elems,
-            workset.d_elems,
-            workset.d_slot_offsets,
-            workset.d_slot_sizes,
-            outdegreesLog.d_elems);
+        } // for
 
         if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
-        // get the size of workset
+        worksetSize = workset1.sum_slot_size();
 
-        if (instrument) {
-            compact_timer.stop();
-            compact_millis +=  compact_timer.elapsedMillis();
-            printf("%d\t%d\t%f\t%f\n", curLevel, worksetSize, level_millis, compact_timer.elapsedMillis());
         }
-
-        worksetSize = workset.sum_slot_size();
-
-        //total_millis += level_millis;
         curLevel += 1;
     }
 
@@ -302,7 +288,9 @@ void BFSGraph_gpu_topo(
     levels.del();
     update.del();
     outdegreesLog.del();
-    workset.del();
+    workset1.del();
+    workset2.del();
+
     
 }
 

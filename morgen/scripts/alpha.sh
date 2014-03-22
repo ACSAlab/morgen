@@ -2,7 +2,7 @@
 
 OUTDIR="tune_alpha"
 
-for graph in mesh fla thermal eco audi copaper livejournal kkt amazon rmat1 rmat2 random1 random2
+for graph in mesh fla thermal eco audi copaper livejournal kkt amazon rmat1 rmat2 random1 random2 random3 kron
 do
 	for i in 1 2 3 4 5 6 7 8 9 10
 	do

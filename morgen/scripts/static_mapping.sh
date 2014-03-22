@@ -2,7 +2,7 @@
 
 OUTDIR="static_mapping"
 
-for graph in mesh fla thermal eco audi copaper livejournal kkt amazon rmat1 rmat2 random1 random2
+for graph in mesh fla thermal eco audi copaper livejournal kkt amazon rmat1 rmat2 random1 random2 random3 kron
 do
 
 

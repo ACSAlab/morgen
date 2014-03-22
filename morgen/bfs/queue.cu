@@ -52,11 +52,12 @@ BFSKernel_queue_group_map(
     VertexId  *column_indices,
     VertexId  *worksetFrom,
     SizeT     *sizeFrom,
+    VertexId  *worksetTo,
+    SizeT     *sizeTo,
     Value     *levels,
     Value     curLevel,
     int       group_size,
-    float     group_per_block,
-    int       *update)
+    float     group_per_block)
 {
 
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -82,40 +83,14 @@ BFSKernel_queue_group_map(
 
             if (levels[inNode] == MORGEN_INF) {
                 levels[inNode] = curLevel + 1;
-                update[inNode] = 1;
+                SizeT pos = atomicAdd( (SizeT*) &(*sizeTo), 1 );
+                worksetTo[pos] = inNode;
             }
 
         }
     }
 }
 
-
-/**
- * use update[] to mask activated[]
- */
-template<typename VertexId, typename SizeT>
-__global__ void
-BFSKernel_queue_gen_workset(
-    SizeT     n,
-    SizeT     *row_offsets,
-    VertexId  *column_indices,
-    int       *update,
-    VertexId  *worksetTo,
-    SizeT     *sizeTo)
-{
-    int tid =  blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (tid < n) {
-
-        if (update[tid] == 1) {
-
-            update[tid] = 0;     // clear after activating
-
-            SizeT pos = atomicAdd( (SizeT*) &(*sizeTo), 1 );
-            worksetTo[pos] = tid;
-        }
-    }
-}
 
 
 
@@ -129,21 +104,21 @@ void BFSGraph_gpu_queue(
     bool get_metrics)
 {
 
-    workset::Queue<VertexId, SizeT>  workset(g.n);
+    workset::Queue<VertexId, SizeT>  workset1(g.n);
+    workset::Queue<VertexId, SizeT>  workset2(g.n);
+
+
 
     util::List<Value, SizeT> levels(g.n);
     levels.all_to((Value) MORGEN_INF);
 
-    util::List<int, SizeT> update(g.n);
-    update.all_to(0);
 
-    workset.init(source);   
+    workset1.init(source);   
     levels.set(source, 0);
     
     SizeT worksetSize = 1;
     Value curLevel = 0;
 
-    SizeT edge_frontier_size;
 
     float total_millis = 0.0;
     float expand_millis = 0.0;
@@ -169,62 +144,58 @@ void BFSGraph_gpu_queue(
 
     while (worksetSize > 0) {
 
-        if (instrument) {
-            workset.transfer_back();
-            metric.count(workset.elems, workset.size(), g, group_size);
-            edge_frontier_size = 0;
-            for (int i = 0; i < *workset.sizep; i++) {
-                VertexId v = workset.elems[i];
-                SizeT start = g.row_offsets[v];
-                SizeT end = g.row_offsets[v+1];
-                edge_frontier_size += (end - start);
-            }
-            expand_timer.start();  // start timer
+        // 1 -> 2
+        if (curLevel % 2 == 0) {
+
+            workset2.clear_size();
+
+            int blockNum = MORGEN_BLOCK_NUM_SAFE(worksetSize * group_size, block_size);
+            BFSKernel_queue_group_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
+                g.d_row_offsets,
+                g.d_column_indices,
+                workset1.d_elems,
+                workset1.d_sizep,
+                workset2.d_elems,
+                workset2.d_sizep,
+                levels.d_elems,
+                curLevel,     
+                group_size,
+                group_per_block);
+
+
+
+            worksetSize = workset2.size();
+            if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
+
+        } else {
+        // 2 -> 1
+            workset1.clear_size();
+
+
+            int blockNum = MORGEN_BLOCK_NUM_SAFE(worksetSize * group_size, block_size);
+            BFSKernel_queue_group_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
+                g.d_row_offsets,
+                g.d_column_indices,
+                workset2.d_elems,
+                workset2.d_sizep,
+                workset1.d_elems,
+                workset1.d_sizep,
+                levels.d_elems,
+                curLevel,     
+                group_size,
+                group_per_block);
+
+            if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
+
+
+            worksetSize = workset1.size();
+
+
+
         }
 
-        int blockNum = MORGEN_BLOCK_NUM_SAFE(worksetSize * group_size, block_size);
+//        printf("%d\n", worksetSize);
 
-        BFSKernel_queue_group_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
-            g.d_row_offsets,
-            g.d_column_indices,
-            workset.d_elems,
-            workset.d_sizep,
-            levels.d_elems,
-            curLevel,     
-            group_size,
-            group_per_block,
-            update.d_elems);
-
-        if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
-
-        if (instrument) {
-            expand_timer.stop();
-            expand_millis += expand_timer.elapsedMillis();
-            compact_timer.start();
-        }      
-
-        workset.clear_size();
-
-        blockNum = MORGEN_BLOCK_NUM_SAFE(g.n, block_size);
-  
-        // generate the next workset according to update[]
-        BFSKernel_queue_gen_workset<<<blockNum, block_size>>> (
-            g.n,
-            g.d_row_offsets,
-            g.d_column_indices,
-            update.d_elems,
-            workset.d_elems,
-            workset.d_sizep);
-
-        if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
-
-        if (instrument) {
-            compact_timer.stop();
-            compact_millis += compact_timer.elapsedMillis();
-            printf("%d\t%d\t%d\t%f\t%f\n", curLevel, worksetSize, edge_frontier_size, expand_timer.elapsedMillis(), compact_timer.elapsedMillis());
-        }
-
-        worksetSize = workset.size();
 
         curLevel += 1;
 
@@ -245,8 +216,10 @@ void BFSGraph_gpu_queue(
     levels.print_log();
 
     levels.del();
-    update.del();
-    workset.del();
+    workset1.del();
+
+    workset2.del();
+
     
 }
 
