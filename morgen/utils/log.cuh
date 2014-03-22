@@ -58,8 +58,14 @@ int getLogOf(int outDegree) {
 		return 14;
 	else if (outDegree > 16384 && outDegree <= 32768)
 		return 15;
+	else if (outDegree > 32768 && outDegree <= 65536)
+		return 16;
+	else if (outDegree > 65536 && outDegree <=131072)
+		return 17;
+	else if (outDegree > 131072 && outDegree <=262144)
+		return 18;
 	else {
-		fprintf(stderr, "[log] can't handle it.\n");
+		fprintf(stderr, "[log] can't handle outdegree: %d \n", outDegree);
 		return -2;
 
 	}

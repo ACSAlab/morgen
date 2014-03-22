@@ -244,6 +244,13 @@ int main(int argc, char **argv) {
         check_open(fp, "random2");
         if (graph::gen::cooGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
 
+    } else if (graph == "random3") {
+    
+        fp = fopen(getenv("RANDOM3_GRAPH"), "r");
+        check_open(fp, "random3");
+        if (graph::gen::cooGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
+
+
     } else if (graph == "kkt") {
 
         fp = fopen(getenv("KKT_GRAPH"), "r");
@@ -316,6 +323,22 @@ int main(int argc, char **argv) {
         fp = fopen(getenv("USA_GRAPH"), "r");
         check_open(fp, "usa");
         if (graph::gen::myGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
+
+    } else if (graph == "youtube") {
+        fp = fopen(getenv("YOUTUBE_GRAPH"), "r");
+        check_open(fp, "youtube");
+        if (graph::gen::cooGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
+
+    } else if (graph == "dblp") {
+        fp = fopen(getenv("DBLP_GRAPH"), "r");
+        check_open(fp, "dblp");
+        if (graph::gen::cooGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
+
+    } else if (graph == "ldoor") {
+        fp = fopen(getenv("LDOOR_GRAPH"), "r");
+        check_open(fp, "ldoor");
+        if (graph::gen::dimacsGraphGen<VertexId, SizeT, Value>(fp, ga) != 0) return 1;
+
 
     } else if (graph == "path") {
         fp = fopen(new_path.c_str(), "r");
