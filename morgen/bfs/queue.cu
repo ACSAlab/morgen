@@ -110,7 +110,6 @@ BFSKernel_queue_gen_workset(
         if (update[tid] == 1) {
 
             update[tid] = 0;     // clear after activating
-
             SizeT pos = atomicAdd( (SizeT*) &(*sizeTo), 1 );
             worksetTo[pos] = tid;
         }
@@ -206,8 +205,6 @@ void BFSGraph_gpu_queue(
         workset.clear_size();
 
         blockNum = MORGEN_BLOCK_NUM_SAFE(g.n, block_size);
-  
-        // generate the next workset according to update[]
         BFSKernel_queue_gen_workset<<<blockNum, block_size>>> (
             g.n,
             g.d_row_offsets,

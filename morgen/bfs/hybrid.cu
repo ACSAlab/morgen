@@ -25,7 +25,6 @@
 #include <morgen/utils/log.cuh>
 #include <morgen/utils/metrics.cuh>
 #include <morgen/workset/hash.cuh>
-
 #include <cuda_runtime_api.h>
 
 
@@ -186,8 +185,7 @@ BFSKernel_hybrid_to_hash_gen_workset(
     int       *update,
     VertexId  *workset_to,
     SizeT     *slot_offsets_to,
-    VertexId  *slot_sizes_to,
-    int       *outdegrees)
+    VertexId  *slot_sizes_to)
 {
     int tid =  blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -197,7 +195,8 @@ BFSKernel_hybrid_to_hash_gen_workset(
 
             update[tid] = 0;     // clear after activating
 
-            int hash = outdegrees[tid];
+            SizeT outdegree = row_offsets[tid+1] - row_offsets[tid];
+            int hash = log2((float)outdegree);
             if (hash >= 0) {
                 SizeT pos= atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
                 workset_to[slot_offsets_to[hash] + pos] = tid;
@@ -224,20 +223,6 @@ void BFSGraph_gpu_hybrid(
 
     workset::Hash<VertexId, SizeT, Value>  workset_hash(stats, alpha);
     workset::Queue<VertexId, SizeT>  workset_queue(g.n);
-
-    util::List<Value, SizeT> outdegreesLog(g.n);
-    for (SizeT i = 0; i < g.n; i++) {
-        SizeT outDegree = g.row_offsets[i+1] - g.row_offsets[i];
-
-        int slot_should_go = util::getLogOf(outDegree);
-
-        while (workset_hash.slot_size_max[slot_should_go] == 0) { 
-            slot_should_go += 1;
-        }
-
-        outdegreesLog.elems[i] = slot_should_go;
-    }
-    outdegreesLog.transfer();
 
 
     util::List<Value, SizeT> levels(g.n);
@@ -268,7 +253,6 @@ void BFSGraph_gpu_hybrid(
 
     // kernel configuration
 
-    int mapping_factor = 32; 
     float group_per_block = (float)block_size / 32;
 
     util::Metrics<VertexId, SizeT, Value> metric;
@@ -347,13 +331,7 @@ void BFSGraph_gpu_hybrid(
         ///////////////////////////// queue expand //////////////////////////
         if (instrument) { queue_expand_timer.start(); }
 
-        int blockNum = (worksetSize * mapping_factor % block_size == 0 ? 
-            worksetSize * mapping_factor / block_size :
-            worksetSize * mapping_factor / block_size + 1);
-        
-        // safe belt: grid width has a limit of 65535
-        if (blockNum > 65535) blockNum = 65535;
-
+        int blockNum = MORGEN_BLOCK_NUM_SAFE(worksetSize * 32, block_size);
         BFSKernel_hybrid_from_queue_group_map<VertexId, SizeT, Value><<<blockNum, block_size>>>(
             g.d_row_offsets,
             g.d_column_indices,
@@ -392,8 +370,7 @@ void BFSGraph_gpu_hybrid(
             update.d_elems,
             workset_hash.d_elems,
             workset_hash.d_slot_offsets,
-            workset_hash.d_slot_sizes,
-            outdegreesLog.d_elems);
+            workset_hash.d_slot_sizes);
 
         if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
@@ -437,7 +414,6 @@ void BFSGraph_gpu_hybrid(
         ////////////////////////////////// queue compaction ///////////////////////////
 
         }
-
         curLevel += 1;
     }
 
@@ -463,7 +439,6 @@ void BFSGraph_gpu_hybrid(
     levels.print_log();
     levels.del();
     update.del();
-    outdegreesLog.del();
     workset_queue.del();
     workset_hash.del();
     

@@ -15,6 +15,7 @@
  *   GNU General Public License for more details.
  */
 
+#pragma once
 
 namespace morgen {
 namespace graph {

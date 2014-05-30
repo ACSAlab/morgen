@@ -92,8 +92,7 @@ BFSKernel_topo_gen_workset(
     int       *update,
     VertexId  *workset_to,
     SizeT     *slot_offsets_to,
-    VertexId  *slot_sizes_to,
-    int       *outdegrees)
+    VertexId  *slot_sizes_to)
 {
     int tid =  blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -102,7 +101,9 @@ BFSKernel_topo_gen_workset(
         if (update[tid] == 1) {
 
             update[tid] = 0;     // clear after activating
-            int hash = outdegrees[tid];
+
+            SizeT outdegree = row_offsets[tid+1] - row_offsets[tid];
+            int hash = log2((float)outdegree);
             if (hash >= 0) {
                 SizeT pos= atomicAdd( (SizeT*) &(slot_sizes_to[hash]), 1 );
                 workset_to[slot_offsets_to[hash] + pos] = tid;
@@ -110,8 +111,6 @@ BFSKernel_topo_gen_workset(
         }
     }
 }
-
-
 
 
 
@@ -130,29 +129,16 @@ void BFSGraph_gpu_topo(
 
     workset::Hash<VertexId, SizeT, Value>  workset(stats, alpha);
 
-    // create a outdegree table first     
-    util::List<Value, SizeT> outdegreesLog(g.n);
-    for (SizeT i = 0; i < g.n; i++) {
-        SizeT outDegree = g.row_offsets[i+1] - g.row_offsets[i];
-
-        int slot_should_go = util::getLogOf(outDegree);
-        while (workset.slot_size_max[slot_should_go] == 0) { 
-            slot_should_go += 1;
-        }
-        outdegreesLog.elems[i] = slot_should_go;
-    }
-    outdegreesLog.transfer();
 
     // Initalize auxiliary list
     util::List<Value, SizeT> levels(g.n);
     levels.all_to((Value) MORGEN_INF);
 
     // traverse from source node
-    workset.insert(outdegreesLog.elems[source], source);   
+    workset.insert(0, source);   
     levels.set(source, 0);
     util::List<int, SizeT> update(g.n);
     update.all_to(0);
-
 
     SizeT worksetSize = 1;
     Value curLevel = 0;
@@ -188,7 +174,11 @@ void BFSGraph_gpu_topo(
     while (worksetSize > 0) {
 
 
-        if (instrument) level_millis = 0;
+        if (instrument) {
+            level_millis = 0;
+            expand_timer.start();
+        }
+
 
         for (int i = 0; i < workset.slot_num; i++) {
 
@@ -211,6 +201,8 @@ void BFSGraph_gpu_topo(
                 group_size *= 2;
             }
 
+            
+            
             if (instrument) {
                 workset.transfer_back();
                 metric.count(workset.elems + workset.slot_offsets[i], partialWorksetSize, g, group_size);
@@ -221,9 +213,9 @@ void BFSGraph_gpu_topo(
                     SizeT end = g.row_offsets[v+1];
                     edge_frontier_size += (end - start);
                 }
-                expand_timer.start();
             }
-
+            
+            
             float group_per_block = (float) block_size / group_size;
             blockNum = MORGEN_BLOCK_NUM_SAFE(partialWorksetSize * group_size, block_size);
 
@@ -241,20 +233,22 @@ void BFSGraph_gpu_topo(
                 group_per_block);
 
 
-            if (instrument) { 
-                expand_timer.stop(); 
-                expand_millis +=  expand_timer.elapsedMillis();
-                level_millis += expand_timer.elapsedMillis();
-            }
+
             //level_millis += gpu_timer.elapsedMillis();
-            if (instrument) printf("\t[slot] %d\t%d\t%d\t%d\t%f\t%f\n", i, group_size, partialWorksetSize, edge_frontier_size, expand_timer.elapsedMillis());
+            //if (instrument) printf("\t[slot] %d\t%d\t%d\t%d\n", i, group_size, partialWorksetSize, edge_frontier_size;
         }
 
 
         if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
+        if (instrument) { 
+            expand_timer.stop(); 
+            expand_millis +=  expand_timer.elapsedMillis();
+            level_millis += expand_timer.elapsedMillis();
+            compact_timer.start();
+        }
 
-        if (instrument) compact_timer.start();
+
 
         // clear the workset first
         workset.clear_slot_sizes();
@@ -268,8 +262,7 @@ void BFSGraph_gpu_topo(
             update.d_elems,
             workset.d_elems,
             workset.d_slot_offsets,
-            workset.d_slot_sizes,
-            outdegreesLog.d_elems);
+            workset.d_slot_sizes);
 
         if (util::handleError(cudaThreadSynchronize(), "BFSKernel failed ", __FILE__, __LINE__)) break;
 
@@ -301,7 +294,6 @@ void BFSGraph_gpu_topo(
     levels.print_log();
     levels.del();
     update.del();
-    outdegreesLog.del();
     workset.del();
     
 }

@@ -1,10 +1,10 @@
 #!/bin/bash
 
-OUTDIR="run_scala_rmat_32"
+OUTDIR="run_scala_random_32"
 
 
-for i in 1 2 3 4 5 6 7 8 9 10
+for i in 1 2 4 8 16 32
 do
-	echo ./bin/test path hybrid --path=/home/chengyichao/Snap-2.1/examples/graphgen/rmat.32.${i}Mv --threshold=3548 --alpha=4 --theta=16384 --instrument
-	./bin/test path hybrid --path=/home/chengyichao/Snap-2.1/examples/graphgen/rmat.32.${i}Mv --threshold=3548 --alpha=4 --theta=16384 --instrument | grep 'Expand' >> ./$OUTDIR.out
+	echo ./bin/test path topo --path=/home/chengyichao/Snap-2.1/examples/graphgen/random.32.${i}M --threshold=1536 --iteration=10
+	./bin/test path topo --path=/home/chengyichao/Snap-2.1/examples/graphgen/random.32.${i}M --threshold=1536 --iteration=10 | grep 'Time' >> ./$OUTDIR.out
 done

@@ -24,6 +24,9 @@
 #include <morgen/utils/var.cuh>
 
 
+#include <morgen/graph/coo_edge_tuple.cuh>
+
+
 #include <cuda_runtime_api.h>
 
 
@@ -39,38 +42,32 @@ namespace bfs {
  */
 template<typename VertexId, typename SizeT, typename Value>
 __global__ void
-BFSKernel_expand(
-  SizeT     max_size,
-  SizeT     *row_offsets,
-  VertexId  *column_indices,
-  int       *activated,
-  Value     *levels,
-  Value     curLevel,
-  int       *visited,
-  int       *update)
+BFSKernel_expand_coo(
+  SizeT            max_size,
+  morgen::graph::CooEdgeTuple<VertexId>     *elems,
+  int              *activated,
+  Value            *levels,
+  Value            curLevel,
+  int              *visited,
+  int              *update)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (tid < max_size) {
 
-        if (activated[tid] == 1) {
+        VertexId src = elems[tid].row;
 
-            activated[tid] = 0;     // wakeup only once
-            SizeT outEdgeFirst = row_offsets[tid];
-            SizeT outEdgeLast = row_offsets[tid+1];
-
-            // serial expansion
-            for (SizeT edge = outEdgeFirst; edge < outEdgeLast; edge++) {
-
-                VertexId inNode = column_indices[edge];
-                if (visited[inNode] == 0) {
-                    levels[inNode] = curLevel + 1;
-                    update[inNode] = 1;
-                }
+        if (activated[src] == 1) {
+            activated[src] = 0;     // wakeup only once
+            VertexId dest = elems[tid].col;
+            if (visited[dest] == 0) {
+                levels[dest] = curLevel + 1;
+                update[dest] = 1;
             }
         }
     }
 }
+
 
 
 /**
@@ -78,7 +75,7 @@ BFSKernel_expand(
  */
 template<typename SizeT>
 __global__ void
-BFSKernel_update(
+BFSKernel_update_coo(
     SizeT     max_size,
     int       *activated,
     int       *visited,
@@ -98,34 +95,25 @@ BFSKernel_update(
 }
 
 
-
-
-
 template<typename VertexId, typename SizeT, typename Value>
-void BFSGraph_gpu_bitmask(
-    const graph::CsrGraph<VertexId, SizeT, Value> &g,
+void BFSGraph_gpu_bitmask_coo(
+    const graph::CooGraph<VertexId, SizeT, Value> &g,
     VertexId source,
     int block_size,
-    bool instrument)
-
+    int instrument)
 {
 
     // use a list to represent bitmask
     util::List<int, SizeT> activated(g.n);
     util::List<int, SizeT> update(g.n);
+    util::List<Value, SizeT> levels(g.n);
+    util::List<int, SizeT> visited(g.n);
+    util::Var<int> terminate;
+
     activated.all_to(0);
     update.all_to(0);
-
-    // Initalize auxiliary list
-    util::List<Value, SizeT> levels(g.n);
     levels.all_to((Value) MORGEN_INF);
-
-    // visitation
-    util::List<int, SizeT> visited(g.n);
     visited.all_to(0);
-
-    // set up a flag, initially set
-    util::Var<int> terminate;
     terminate.set(0);
 
     // traverse from source node
@@ -135,10 +123,12 @@ void BFSGraph_gpu_bitmask(
     Value curLevel = 0;
 
 
+
     printf("GPU bitmasked bfs starts... \n");   
     if (instrument) printf("level\ttime\n");
 
     float total_milllis = 0.0;
+
 
     // loop as long as the flag is set
     while (terminate.getVal() == 0) {
@@ -151,22 +141,23 @@ void BFSGraph_gpu_bitmask(
         util::GpuTimer gpu_timer;
         gpu_timer.start();
 
-        int blockNum = MORGEN_BLOCK_NUM_SAFE(g.n, block_size);
-        BFSKernel_expand<<<blockNum, block_size>>>(
-            g.n,
-            g.d_row_offsets,
-            g.d_column_indices,
+
+        int blockNum = MORGEN_BLOCK_NUM_SAFE(g.m, block_size);
+        BFSKernel_expand_coo<<<blockNum, block_size>>>(
+            g.m,
+            g.d_elems,
             activated.d_elems,
             levels.d_elems,
             curLevel,             
             visited.d_elems,
             update.d_elems);
 
-
         if (util::handleError(cudaThreadSynchronize(), "BFSKernel_expand failed ", __FILE__, __LINE__)) break;
 
 
-        BFSKernel_update<<<blockNum, block_size>>>(
+
+        blockNum = MORGEN_BLOCK_NUM_SAFE(g.n, block_size);
+        BFSKernel_update_coo<<<blockNum, block_size>>>(
             g.n,
             activated.d_elems,
             visited.d_elems,

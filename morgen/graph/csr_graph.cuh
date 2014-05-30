@@ -97,7 +97,7 @@ struct CsrGraph {
 
 
     
-    void initFromCoo(
+    void fromCoo(
         CooEdgeTuple<VertexId> *coo, 
         SizeT coo_nodes, 
         SizeT coo_edges,
